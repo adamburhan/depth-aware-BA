@@ -7,7 +7,6 @@ import yaml
 
 @dataclass
 class CameraConfig:
-    source: Literal["eth3d", "manual"]
     single_camera: bool = True
     # manual-only fields:
     model: str | None = None                    # "PINHOLE", ...
@@ -15,24 +14,6 @@ class CameraConfig:
     width: int | None = None
     height: int | None = None
     intrinsics_are_approximate: bool = False
-
-    def __post_init__(self) -> None:
-        if self.source == "manual":
-            missing = [f for f in ("model", "params", "width", "height")
-                       if getattr(self, f) is None]
-            if missing:
-                raise ValueError(f"camera.source=manual requires {missing}")
-            fx = self.params[0]
-            if abs(fx - self.width) < 0.05 * self.width and not self.intrinsics_are_approximate:
-                raise ValueError(
-                    "fx suspiciously equals image width — placeholder intrinsics? "
-                    "Set intrinsics_are_approximate: true if deliberate "
-                    "(this will force intrinsics refinement ON at mapping)."
-                )
-        elif self.source == "eth3d":
-            if self.params is not None or self.model is not None:
-                raise ValueError("camera.source=eth3d reads calibration from the "
-                                 "scene; do not also specify manual params")
 
 
 @dataclass

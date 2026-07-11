@@ -76,7 +76,40 @@ def run() -> None:
 
 
 def run_db(config, data_root, output_dir):
-    pass
+    output_path = Path(output_dir)
+    image_path = Path(data_root) / config.image_path
+    database_path = output_path / "database.db"
+
+    output_path.mkdir(exist_ok=True)
+    # The log filename is postfixed with the execution timestamp.
+    logging.set_log_destination(logging.INFO, output_path / "INFO.log.")
+
+    if not image_path.exists():
+        raise FileNotFoundError(
+            f"Image path {image_path} does not exist. Please download the dataset and extract it to this path."
+        )
+
+    if database_path.exists():
+        database_path.unlink()
+        
+    pycolmap.set_random_seed(config.seed)
+    
+    reader_options = pycolmap.ImageReaderOptions()
+    reader_options.camera_model = "PINHOLE"
+    reader_options.camera_params = ",".join(map(str, config.camera.params)) if config.camera.params else None
+            
+    pycolmap.extract_features(
+        database_path,
+        image_path,
+        camera_mode=pycolmap.CameraMode.SINGLE,
+        reader_options=reader_options
+    )
+    
+    if config.matching.method == "exhaustive":
+        pycolmap.match_exhaustive(database_path)
+    elif config.matching.method == "sequential":
+        pycolmap.match_sequential(database_path, config.matching.overlap, config.matching.loop_detection)
+
 
 if __name__ == "__main__":
     run()
