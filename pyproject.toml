@@ -7,10 +7,14 @@ authors = [
     { name = "Adam Burhan", email = "adam14011999@gmail.com" }
 ]
 requires-python = ">=3.13"
-dependencies = []
+dependencies = [
+    "enlighten>=1.14.1",
+    "pycolmap>=4.1.0",
+    "pyyaml>=6.0",
+]
 
 [project.scripts]
-depthba = "depthba:main"
+depthba-db = "depthba.frontends.cli:main_db"
 
 [build-system]
 requires = ["uv_build>=0.9.15,<0.10.0"]
