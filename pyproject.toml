@@ -9,6 +9,7 @@ authors = [
 requires-python = ">=3.13"
 dependencies = [
     "enlighten>=1.14.1",
+    "numpy>=2.5.1",
     "pycolmap>=4.1.0",
     "pyyaml>=6.0",
 ]
