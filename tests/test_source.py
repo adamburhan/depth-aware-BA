@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from depthba.depth.source import DepthBundle, load_bundle, save_bundle
+from depthba.depth.source import DepthBundle, DepthSource, load_bundle, save_bundle
 
 H, W, K = 6, 8, 4
 
@@ -115,3 +115,18 @@ def test_bad_ndim_rejected(tmp_path):
     b.estimated_depth = b.estimated_depth[None]
     with pytest.raises(ValueError, match="estimated_depth"):
         save_bundle(tmp_path / "img.npz", b)
+
+
+def test_depth_source_missing_dir(tmp_path):
+    with pytest.raises(FileNotFoundError, match="dump dir"):
+        DepthSource(tmp_path / "nope")
+
+
+def test_depth_source_load_and_stems(tmp_path):
+    src = DepthSource(tmp_path)
+    save_bundle(src.bundle_path("DSC_6489.JPG"), minimal_bundle())
+    got = src.load("DSC_6489.JPG", (H, W))
+    np.testing.assert_array_equal(got.estimated_depth, np.ones((H, W), np.float32))
+    assert src.image_stems() == {"DSC_6489"}
+    with pytest.raises(FileNotFoundError, match="DSC_0000"):
+        src.load("DSC_0000.JPG", (H, W))

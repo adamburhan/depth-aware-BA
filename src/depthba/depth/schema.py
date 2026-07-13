@@ -27,6 +27,12 @@ class KeypointDepth:
       per sensor in depthba_depth_meta.sigma_space. Factor construction
       converts to the active residual space (e.g. sigma_log ~ sigma_z / z).
     - None means "sensor does not provide this" — distinct from 0.0/False.
+    - weights may sum to < 1 per keypoint (sky mass can live outside the
+      stored K). Max-mixture factor construction consumes weights raw —
+      argmax_k [log w_k - cost_k] is invariant to a common scale — but any
+      weight-thresholded logic (ambiguity gates, wmin, winner statistics)
+      must renormalize per keypoint first, or thresholds silently mean
+      different things near sky.
     """
     image_id: int
     point2D_idx: int

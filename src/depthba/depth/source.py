@@ -91,6 +91,42 @@ def save_bundle(path: Path, bundle: DepthBundle) -> None:
     np.savez_compressed(path, **present)
 
 
+class DepthSource:
+    """Directory of per-image bundles for one dump: <dump_dir>/<image_stem>.npz.
+
+    Keyed by COLMAP image name (stem-matched: DSC_6489.JPG -> DSC_6489.npz).
+    image_stems() lets attach_depths pre-check coverage of the whole database
+    before writing anything, instead of dying mid-ingest.
+    """
+
+    def __init__(self, dump_dir: Path):
+        if not Path(dump_dir).is_dir():
+            raise FileNotFoundError(f"dump dir does not exist: {dump_dir}")
+        self.dump_dir = Path(dump_dir)
+
+    def bundle_path(self, image_name: str) -> Path:
+        return self.dump_dir / f"{Path(image_name).stem}.npz"
+
+    def load(self, image_name: str, expected_hw: tuple[int, int]) -> DepthBundle:
+        p = self.bundle_path(image_name)
+        if not p.exists():
+            raise FileNotFoundError(
+                f"no bundle for image {image_name!r} in {self.dump_dir} "
+                f"(expected {p.name})"
+            )
+        return load_bundle(p, expected_hw)
+
+    def image_stems(self) -> set[str]:
+        files = list(self.dump_dir.glob("*.npz"))
+        stems = {p.stem for p in files}
+        if len(stems) != len(files):
+            raise ValueError(
+                f"stem collisions among bundles in {self.dump_dir} — "
+                "images differing only in extension?"
+            )
+        return stems
+
+
 def load_bundle(path: Path, expected_hw: tuple[int, int]) -> DepthBundle:
     """expected_hw is the image's native (H, W) as recorded in the COLMAP
     database; a mismatch means the dump was produced on a different grid."""

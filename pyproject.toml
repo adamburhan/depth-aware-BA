@@ -16,6 +16,7 @@ dependencies = [
 
 [project.scripts]
 depthba-db = "depthba.frontends.cli:main_db"
+depthba-attach = "depthba.depth.cli:main_attach"
 
 [build-system]
 requires = ["uv_build>=0.9.15,<0.10.0"]
