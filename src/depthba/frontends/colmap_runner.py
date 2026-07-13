@@ -67,7 +67,7 @@ def run() -> None:
 
     # recs = incremental_mapping_with_pbar(database_path, image_path, sfm_path)
     # alternatively, use:
-    from depthba.frontends import custom_incremental_pipeline
+    from depthba.backends import custom_incremental_pipeline
     recs = custom_incremental_pipeline.main(
         database_path, image_path, sfm_path
     )

@@ -8,7 +8,7 @@ from pathlib import Path
 
 import enlighten
 
-from depthba.frontends import custom_bundle_adjustment
+from depthba.backends import custom_bundle_adjustment
 
 import pycolmap
 from pycolmap import (
