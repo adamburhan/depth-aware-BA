@@ -55,17 +55,17 @@ def stage_convention(rec, sigma=0.1):
     t = np.asarray(cfw.translation, dtype=np.float64).copy()
     print(f"observation: image {image.image_id}, z_cam = {z:.4f} m, quat(xyzw as stored) = {q}")
 
+    # 7-param fused pose block (fork >= 2.7.2); quat order xyzw and alpha-
+    # before-beta were already pinned on the 5-block wheel (exact 0 cost).
     combos = {
-        "quat=xyzw, blocks=[..,alpha,beta]": (q, [1.0], [0.0], False),
-        "quat=wxyz, blocks=[..,alpha,beta]": (np.r_[q[3], q[:3]], [1.0], [0.0], False),
-        "quat=xyzw, blocks=[..,beta,alpha]": (q, [0.0], [1.0], True),
-        "quat=wxyz, blocks=[..,beta,alpha]": (np.r_[q[3], q[:3]], [0.0], [1.0], True),
+        "pose7=[quat(xyzw)|t]": np.r_[q, t],
+        "pose7=[t|quat(xyzw)]": np.r_[t, q],
     }
     results = {}
-    for name, (qq, s4, s5, _swapped) in combos.items():
+    for name, pose7 in combos.items():
         problem = pyceres.Problem()
         cost = pyceres.factors.LogDepthError(float(z), sigma)
-        blocks = [qq.copy(), t.copy(), X.copy(), np.array(s4), np.array(s5)]
+        blocks = [pose7.copy(), X.copy(), np.array([1.0]), np.array([0.0])]
         problem.add_residual_block(cost, None, blocks)
         summary = solve(problem, 0)
         results[name] = summary.initial_cost
@@ -81,7 +81,7 @@ def build_reproj_problem(rec):
     returns (problem, blocks) — hold `blocks` alive for the problem's lifetime."""
     problem = pyceres.Problem()
     loss = None  # trivial, matching the pipeline's global BA
-    quats, tvecs, points, cams = {}, {}, {}, {}
+    poses, points, cams = {}, {}, {}
     for camera_id, camera in rec.cameras.items():
         cams[camera_id] = camera.params.astype(np.float64).copy()
     num_obs = 0
@@ -89,8 +89,10 @@ def build_reproj_problem(rec):
         if not _get(image, "has_pose"):
             continue
         cfw = _get(image, "cam_from_world")
-        quats[image_id] = np.asarray(cfw.rotation.quat, dtype=np.float64).copy()
-        tvecs[image_id] = np.asarray(cfw.translation, dtype=np.float64).copy()
+        poses[image_id] = np.r_[  # pose7 = [quat(xyzw) | t], Rigid3d layout
+            np.asarray(cfw.rotation.quat, dtype=np.float64),
+            np.asarray(cfw.translation, dtype=np.float64),
+        ]
         camera = rec.cameras[image.camera_id]
         for p2d in image.points2D:
             if not p2d.has_point3D():
@@ -99,38 +101,41 @@ def build_reproj_problem(rec):
             if pid not in points:
                 points[pid] = rec.points3D[pid].xyz.astype(np.float64).copy()
             cost = pycolmap.cost_functions.ReprojErrorCost(camera.model, p2d.xy)
+            # NOTE: reprojection cost is point-first [3, 7, 4]; the depth
+            # factors are pose-first [7, 3, 1, 1] — do not copy the ordering.
             problem.add_residual_block(
                 cost, loss,
-                [quats[image_id], tvecs[image_id], points[pid], cams[image.camera_id]],
+                [points[pid], poses[image_id], cams[image.camera_id]],
             )
             num_obs += 1
 
-    for image_id in quats:
-        problem.set_manifold(quats[image_id], pyceres.EigenQuaternionManifold())
+    manifold = pyceres.ProductManifold(
+        pyceres.EigenQuaternionManifold(), pyceres.EuclideanManifold(3)
+    )
+    for image_id in poses:
+        problem.set_manifold(poses[image_id], manifold)
     # gauge: two lowest registered image ids fully constant (over-constrained
     # relative to COLMAP's TWO_CAMS_FROM_WORLD, harmless at a converged state)
-    for image_id in sorted(quats)[:2]:
-        problem.set_parameter_block_constant(quats[image_id])
-        problem.set_parameter_block_constant(tvecs[image_id])
+    for image_id in sorted(poses)[:2]:
+        problem.set_parameter_block_constant(poses[image_id])
     for arr in cams.values():
         problem.set_parameter_block_constant(arr)
 
     print(f"assembled: {num_obs} reprojection residuals, "
-          f"{len(quats)} poses, {len(points)} points")
-    blocks = dict(quats=quats, tvecs=tvecs, points=points, cams=cams)
+          f"{len(poses)} poses, {len(points)} points")
+    blocks = dict(poses=poses, points=points, cams=cams)
     return problem, blocks
 
 
 def stage_reproj(rec):
     print("=== stage 2: reprojection-only A' ===")
     problem, blocks = build_reproj_problem(rec)
-    q0 = {i: q.copy() for i, q in blocks["quats"].items()}
-    t0 = {i: t.copy() for i, t in blocks["tvecs"].items()}
+    p0 = {i: p.copy() for i, p in blocks["poses"].items()}
     tic = time.time()
     summary = solve(problem, 20)
     toc = time.time() - tic
-    dq = max(np.abs(blocks["quats"][i] - q0[i]).max() for i in q0)
-    dt = max(np.abs(blocks["tvecs"][i] - t0[i]).max() for i in t0)
+    dq = max(np.abs(blocks["poses"][i][:4] - p0[i][:4]).max() for i in p0)
+    dt = max(np.abs(blocks["poses"][i][4:] - p0[i][4:]).max() for i in p0)
     print(f"initial cost: {summary.initial_cost:.6e}  (compare to the pipeline's "
           "final global BA cost)")
     print(f"final cost:   {summary.final_cost:.6e}  in {toc:.1f}s")
@@ -149,7 +154,7 @@ def stage_depth(rec, problem, blocks, db_path, sensor, sigma_log,
     alphas, betas = {}, {}
     num_depth, num_skipped = 0, 0
     for image_id, image in rec.images.items():
-        if image_id not in blocks["quats"]:
+        if image_id not in blocks["poses"]:
             continue
         rows = schema.read_depths_for_image(conn, image_id, sensor, meta.num_modes)
         if not rows:
@@ -164,8 +169,7 @@ def stage_depth(rec, problem, blocks, db_path, sensor, sigma_log,
             cost = pyceres.factors.LogDepthError(row.estimated_depth, sigma_log)
             problem.add_residual_block(
                 cost, None,
-                [blocks["quats"][image_id], blocks["tvecs"][image_id],
-                 blocks["points"][p2d.point3D_id],
+                [blocks["poses"][image_id], blocks["points"][p2d.point3D_id],
                  alphas[image_id], betas[image_id]],
             )
             num_depth += 1
