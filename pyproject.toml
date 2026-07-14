@@ -10,8 +10,21 @@ requires-python = ">=3.13"
 dependencies = [
     "enlighten>=1.14.1",
     "numpy>=2.5.1",
-    "pycolmap>=4.1.0",
+    "pycolmap==4.1.0",
+    # macOS: fork wheel + pycolmap still collide on glog (static/dynamic mix,
+    # same vcpkg snapshot) — BA prototyping happens on Linux (snoopy/cluster).
+    "pyceres==2.7.1; sys_platform == 'linux'",
     "pyyaml>=6.0",
+]
+
+# pyceres comes from our fork's release wheels (depth factors; vcpkg snapshot
+# must stay matched to the pinned pycolmap — see adamburhan/pyceres).
+[tool.uv]
+environments = ["sys_platform == 'darwin'", "sys_platform == 'linux'"]
+
+[tool.uv.sources]
+pyceres = [
+    { url = "https://github.com/adamburhan/pyceres/releases/download/v2.7-depthba1/pyceres-2.7.1-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", marker = "sys_platform == 'linux'" },
 ]
 
 [project.scripts]
