@@ -28,6 +28,12 @@ import pyceres
 from depthba.depth import schema
 
 
+def _get(obj, name):
+    """pycolmap 4.1 exposes some accessors as methods, others as properties."""
+    attr = getattr(obj, name)
+    return attr() if callable(attr) else attr
+
+
 def solve(problem, max_iters):
     options = pyceres.SolverOptions()
     options.max_num_iterations = max_iters
@@ -40,10 +46,10 @@ def solve(problem, max_iters):
 
 def stage_convention(rec, sigma=0.1):
     print("=== stage 1: convention ===")
-    image = next(im for im in rec.images.values() if im.has_pose)
+    image = next(im for im in rec.images.values() if _get(im, "has_pose"))
     p2d = next(p for p in image.points2D if p.has_point3D())
     X = rec.points3D[p2d.point3D_id].xyz.copy()
-    cfw = image.cam_from_world
+    cfw = _get(image, "cam_from_world")
     z = (cfw * X)[2]
     q = np.asarray(cfw.rotation.quat, dtype=np.float64).copy()
     t = np.asarray(cfw.translation, dtype=np.float64).copy()
@@ -80,9 +86,9 @@ def build_reproj_problem(rec):
         cams[camera_id] = camera.params.astype(np.float64).copy()
     num_obs = 0
     for image_id, image in rec.images.items():
-        if not image.has_pose:
+        if not _get(image, "has_pose"):
             continue
-        cfw = image.cam_from_world
+        cfw = _get(image, "cam_from_world")
         quats[image_id] = np.asarray(cfw.rotation.quat, dtype=np.float64).copy()
         tvecs[image_id] = np.asarray(cfw.translation, dtype=np.float64).copy()
         camera = rec.cameras[image.camera_id]
@@ -143,7 +149,7 @@ def stage_depth(rec, problem, blocks, db_path, sensor, sigma_log,
     alphas, betas = {}, {}
     num_depth, num_skipped = 0, 0
     for image_id, image in rec.images.items():
-        if not image.has_pose or image_id not in blocks["quats"]:
+        if image_id not in blocks["quats"]:
             continue
         rows = schema.read_depths_for_image(conn, image_id, sensor, meta.num_modes)
         if not rows:
