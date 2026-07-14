@@ -76,23 +76,31 @@ def stage_convention(rec, sigma=0.1):
     return winner if ok else None
 
 
-def build_reproj_problem(rec):
+def build_reproj_problem(rec, blocks=None, quiet=False):
     """Copy-in assembly: local arrays per block (no reliance on pycolmap views);
-    returns (problem, blocks) — hold `blocks` alive for the problem's lifetime."""
+    returns (problem, blocks) — hold `blocks` alive for the problem's lifetime.
+
+    Pass an existing `blocks` dict to build a problem over the SAME arrays —
+    used to evaluate the reprojection objective alone at a later solution."""
     problem = pyceres.Problem()
     loss = None  # trivial, matching the pipeline's global BA
-    poses, points, cams = {}, {}, {}
+    blocks = blocks if blocks is not None else {}
+    poses = blocks.setdefault("poses", {})
+    points = blocks.setdefault("points", {})
+    cams = blocks.setdefault("cams", {})
     for camera_id, camera in rec.cameras.items():
-        cams[camera_id] = camera.params.astype(np.float64).copy()
+        if camera_id not in cams:
+            cams[camera_id] = camera.params.astype(np.float64).copy()
     num_obs = 0
     for image_id, image in rec.images.items():
         if not _get(image, "has_pose"):
             continue
-        cfw = _get(image, "cam_from_world")
-        poses[image_id] = np.r_[  # pose7 = [quat(xyzw) | t], Rigid3d layout
-            np.asarray(cfw.rotation.quat, dtype=np.float64),
-            np.asarray(cfw.translation, dtype=np.float64),
-        ]
+        if image_id not in poses:
+            cfw = _get(image, "cam_from_world")
+            poses[image_id] = np.r_[  # pose7 = [quat(xyzw) | t], Rigid3d layout
+                np.asarray(cfw.rotation.quat, dtype=np.float64),
+                np.asarray(cfw.translation, dtype=np.float64),
+            ]
         camera = rec.cameras[image.camera_id]
         for p2d in image.points2D:
             if not p2d.has_point3D():
@@ -121,9 +129,9 @@ def build_reproj_problem(rec):
     for arr in cams.values():
         problem.set_parameter_block_constant(arr)
 
-    print(f"assembled: {num_obs} reprojection residuals, "
-          f"{len(poses)} poses, {len(points)} points")
-    blocks = dict(poses=poses, points=points, cams=cams)
+    if not quiet:
+        print(f"assembled: {num_obs} reprojection residuals, "
+              f"{len(poses)} poses, {len(points)} points")
     return problem, blocks
 
 
@@ -143,11 +151,12 @@ def stage_reproj(rec):
     rel = (summary.initial_cost - summary.final_cost) / summary.initial_cost
     print(f"{'PASS' if rel < 0.01 and dt < 1e-3 else 'CHECK'}: "
           f"relative cost drop {rel:.2%} (want ~0), poses ~immobile")
-    return problem, blocks
+    return problem, blocks, summary.final_cost
 
 
 def stage_depth(rec, problem, blocks, db_path, sensor, sigma_log,
-                prior_sigma_alpha, prior_sigma_beta):
+                prior_sigma_alpha, prior_sigma_beta, reproj_baseline,
+                save_affine=None):
     print(f"=== stage 3: + depth factors (sensor {sensor!r}) ===")
     conn = sqlite3.connect(db_path)
     meta = schema.read_meta(conn, sensor)
@@ -189,10 +198,32 @@ def stage_depth(rec, problem, blocks, db_path, sensor, sigma_log,
     toc = time.time() - tic
     print(f"initial cost: {summary.initial_cost:.6e}")
     print(f"final cost:   {summary.final_cost:.6e}  in {toc:.1f}s")
+
+    # Split objective: reprojection blocks alone, evaluated at the depth
+    # solution (same arrays, fresh problem, 0-iteration solve). "What did the
+    # depth factors' fit cost in reprojection quality?"
+    eval_problem, _ = build_reproj_problem(rec, blocks, quiet=True)
+    reproj_at_sol = solve(eval_problem, 0).initial_cost
+    print(f"reproj-only cost at depth solution: {reproj_at_sol:.6e} "
+          f"(baseline {reproj_baseline:.6e}, "
+          f"degradation {(reproj_at_sol - reproj_baseline) / reproj_baseline:+.2%})")
+    print(f"depth(+priors) cost at solution:    "
+          f"{summary.final_cost - reproj_at_sol:.6e}")
+
     a = np.array([alphas[i][0] for i in sorted(alphas)])
     b = np.array([betas[i][0] for i in sorted(betas)])
     print(f"alpha: mean {a.mean():.4f} std {a.std():.4f} | "
           f"beta: mean {b.mean():.4f} std {b.std():.4f}")
+    print("per-image affine:")
+    for i in sorted(alphas):
+        print(f"  {i:3d} {rec.images[i].name:24s} "
+              f"alpha={alphas[i][0]:.4f} beta={betas[i][0]:+.4f}")
+    if save_affine:
+        np.savez(save_affine,
+                 image_ids=np.array(sorted(alphas)),
+                 names=np.array([rec.images[i].name for i in sorted(alphas)]),
+                 alpha=a, beta=b)
+        print(f"affine params saved to {save_affine}")
 
 
 def main():
@@ -202,8 +233,13 @@ def main():
     ap.add_argument("--depth", action="store_true", help="run stage 3")
     ap.add_argument("--sensor", default="depthpro")
     ap.add_argument("--sigma_log", type=float, default=0.15)
-    ap.add_argument("--prior_sigma_alpha", type=float, default=0.2)
-    ap.add_argument("--prior_sigma_beta", type=float, default=0.2)
+    # Weak by default: gauge is pinned by poses; an informative linear-space
+    # alpha prior fights the (arbitrary) SfM scale. Tighten deliberately, as
+    # an experimental condition, not by habit.
+    ap.add_argument("--prior_sigma_alpha", type=float, default=1.0)
+    ap.add_argument("--prior_sigma_beta", type=float, default=1.0)
+    ap.add_argument("--save_affine", default=None,
+                    help="optional .npz path for per-image alpha/beta")
     args = ap.parse_args()
 
     rec = pycolmap.Reconstruction(args.sfm)
@@ -212,10 +248,11 @@ def main():
     if stage_convention(rec) is None:
         print("convention unresolved — stopping before assembly")
         return
-    problem, blocks = stage_reproj(rec)
+    problem, blocks, reproj_baseline = stage_reproj(rec)
     if args.depth:
         stage_depth(rec, problem, blocks, args.db, args.sensor, args.sigma_log,
-                    args.prior_sigma_alpha, args.prior_sigma_beta)
+                    args.prior_sigma_alpha, args.prior_sigma_beta,
+                    reproj_baseline, save_affine=args.save_affine)
 
 
 if __name__ == "__main__":
