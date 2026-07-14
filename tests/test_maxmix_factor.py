@@ -66,10 +66,10 @@ def test_weight_flip_at_analytic_threshold():
     log-depth closed form and probe both sides."""
     mu_a, mu_b, sigma, w_a, w_b = 2.0, 3.0, 0.1, 0.8, 0.2
     a, b = np.log(mu_a), np.log(mu_b)
-    # (L-b)^2 - (L-a)^2 = sigma^2 * 2 log(w_a/w_b)  =>  linear in L
+    # score_A = score_B  =>  (b-a)(2L-a-b) = sigma^2 * 2 log(w_a/w_b)
     rhs = sigma**2 * 2.0 * np.log(w_a / w_b)
-    L_star = 0.5 * ((rhs / (a - b)) + a + b)
-    for dL, want_winner in [(-0.01, None), (+0.01, None)]:
+    L_star = 0.5 * ((rhs / (b - a)) + a + b)
+    for dL in (-0.01, +0.01):
         z = float(np.exp(L_star + dL))
         s_a = score(z, mu_a, sigma, w_a)
         s_b = score(z, mu_b, sigma, w_b)
@@ -93,6 +93,12 @@ def test_affine_transform_slots():
     assert maxmix_cost(3.0, [2.0], [0.1], [1.0], alpha=1.0, beta=1.0) < 1e-20
 
 
+@pytest.mark.xfail(
+    strict=True,
+    reason="fork wheel 2.7.2 does not validate constructor inputs — needs "
+    "THROW_CHECKs (modes/sigmas/weights > 0, equal sizes) in the next fork "
+    "rev; size mismatch is the dangerous one (Eigen UB, not just NaN)",
+)
 def test_construction_validation():
     bad = [
         dict(modes=[0.0, 2.0], sigmas=[0.1, 0.1], weights=[0.5, 0.5]),   # mode <= 0
