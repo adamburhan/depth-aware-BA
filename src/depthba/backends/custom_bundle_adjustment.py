@@ -21,6 +21,7 @@ import numpy as np
 import pyceres
 
 import pycolmap
+import pycolmap.cost_functions
 from pycolmap import logging
 
 from depthba.backends.depth_context import DepthContext, median_depth_ratio
