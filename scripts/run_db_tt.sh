@@ -2,7 +2,7 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=32G
-#SBATCH --time=4:00:00
+#SBATCH --time=2:00:00
 #SBATCH --array=0-6
 #SBATCH --job-name=tt_db
 #SBATCH --output=/network/scratch/a/adam.burhan/logs/tt_db_%A_%a.out
