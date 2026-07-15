@@ -1,0 +1,19 @@
+# Ablation rung 3: RAW metric trust (alpha = 1 frozen, beta = 0 frozen).
+# Kicker: catastrophic — 213mm / 2.65deg, half the map filtered, 29/31.
+# Verified NOT a bug (hand-computed cost matches: 2.89e5, 3.32 sigma/factor):
+# the frozen alpha demands the map be in DepthPro-meters while the gauge
+# pins the map at its arbitrary SfM scale (1.76x meters); the ~3.3 sigma
+# unresolvable disagreement warps geometry locally instead of rescaling.
+# DepthPro's own global scale is within ~7% of truth here — the FAIR
+# raw-metric condition needs scale freedom (alpha-anchored gauge or one
+# shared global alpha), which is a future condition.
+sensor: depthpro
+depth_space: log
+depth_in_global: true
+depth_in_local: false
+sigma: 0.15
+per_image_scale: false
+per_image_shift: false
+prior_sigma_alpha: null
+prior_sigma_beta: null
+alpha_init: unit

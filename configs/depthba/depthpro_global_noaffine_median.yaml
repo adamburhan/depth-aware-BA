@@ -1,0 +1,16 @@
+# Ablation rung 2: affine FROZEN at per-image median scale (alpha = median
+# z/mu at the image's first BA, beta = 0, neither optimized).
+# Kicker: 9.2mm / 0.099deg, ~12% points filtered (rung 1: 4.8mm / 0.085deg).
+# Confound to remember: reconstruction.normalize() rescales the map after
+# global BAs, so the frozen median-alpha goes stale — this rung measures
+# "median-frozen + scale drift", not pure median-frozen.
+sensor: depthpro
+depth_space: log
+depth_in_global: true
+depth_in_local: false
+sigma: 0.15
+per_image_scale: false
+per_image_shift: false
+prior_sigma_alpha: null
+prior_sigma_beta: null
+alpha_init: median

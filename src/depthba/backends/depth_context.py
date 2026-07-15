@@ -82,9 +82,19 @@ class DepthContext:
         """Get-or-create the persistent alpha/beta blocks for an image.
         alpha0 is used only at creation (the image's first BA appearance)."""
         if image_id not in self.alphas:
-            self.alphas[image_id] = np.array([float(alpha0)])
-            self.betas[image_id] = np.array([0.0])
+            self.alphas[image_id] = np.array([float(alpha0)], dtype=np.float64)
+            self.betas[image_id] = np.array([0.0], dtype=np.float64)
         return self.alphas[image_id], self.betas[image_id]
+
+    def rescale_affine(self, scale: float) -> None:
+        """Keep alpha/beta consistent when reconstruction.normalize() rescales
+        the map: z' = s*z  =>  alpha' = s*alpha, beta' = s*beta. Without this,
+        persistent affine blocks go stale after every normalization (harmless
+        for free alpha/beta, which re-converge, but wrong for frozen ones)."""
+        for alpha in self.alphas.values():
+            alpha *= scale
+        for beta in self.betas.values():
+            beta *= scale
 
     def make_cost(self, row) -> "pyceres.CostFunction":
         cfg = self.config
@@ -92,7 +102,9 @@ class DepthContext:
         if num_modes == 1:
             factor = getattr(pyceres.factors, _PLAIN_FACTORS[cfg.depth_space])
             sigma = float(row.sigmas[0]) if row.sigmas is not None else cfg.sigma
-            return factor(float(row.estimated_depth), sigma)
+            # modes[0] == estimated_depth for K=1 rows by extractor
+            # construction; modes[0] keeps the K=1/K>1 paths consistent.
+            return factor(float(row.modes[0]), sigma)
         factor = getattr(pyceres.factors, _MAXMIX_FACTORS[cfg.depth_space])
         sigmas = row.sigmas if row.sigmas is not None else np.full(num_modes, cfg.sigma)
         return factor(
@@ -105,7 +117,11 @@ class DepthContext:
 def median_depth_ratio(image, reconstruction, rows) -> float:
     """Alpha warm start: median z_cam / mu over the image's triangulated,
     non-sky depth rows (per-image auto-scale). The multiplicative slot of
-    the affine is alpha — never initialize beta with a ratio."""
+    the affine is alpha — never initialize beta with a ratio.
+
+    Uses estimated_depth deliberately (also for multimodal rows): the schema
+    defines it as the sensor's committed single-value answer, which is the
+    right scale reference; mode order carries no primacy guarantee."""
     cam_from_world = image.cam_from_world
     if callable(cam_from_world):
         cam_from_world = cam_from_world()

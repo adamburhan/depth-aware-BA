@@ -28,8 +28,8 @@ from pycolmap import (
 
 def write_snapshot(reconstruction: Reconstruction, snapshot_path: Path) -> None:
     logging.info("Creating snapshot")
-    timestamp = time.time() * 1000
-    path = snapshot_path / f"{timestamp:010d}"
+    timestamp = int(time.time() * 1000)
+    path = snapshot_path / f"{timestamp:013d}"
     path.mkdir(exist_ok=True, parents=True)
     logging.verbose(1, f"=> Writing to {path}")
     reconstruction.write(path)
@@ -122,7 +122,9 @@ def initialize_reconstruction(
     custom_bundle_adjustment.adjust_global_bundle(
         mapper, mapper_options, options.get_global_bundle_adjustment(), depth_ctx
     )
-    reconstruction.normalize()
+    tform = reconstruction.normalize()
+    if depth_ctx is not None:
+        depth_ctx.rescale_affine(tform.scale)
     mapper.filter_points(mapper_options)
     mapper.filter_frames(mapper_options)
 

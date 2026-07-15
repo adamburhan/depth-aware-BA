@@ -94,6 +94,7 @@ def _add_image_to_problem(problem, blocks, loss, ba_config, reconstruction, imag
              blocks["cams"][camera_id]],
         )
         blocks["point_num_obs"][point3D_id] += 1
+        blocks["num_reproj_obs"] += 1
 
 
 def _add_point_to_problem(problem, blocks, loss, ba_config, reconstruction, point3D_id):
@@ -126,6 +127,7 @@ def _add_point_to_problem(problem, blocks, loss, ba_config, reconstruction, poin
             [blocks["points"][point3D_id], blocks["poses"][frame_id],
              blocks["cams"][camera_id]],
         )
+        blocks["num_reproj_obs"] += 1
 
 
 def _parameterize_cameras(problem, blocks, ba_options, ba_config, reconstruction):
@@ -349,6 +351,7 @@ def build_problem(
         "const_cams": set(),
         "config_cams": set(),           # cameras serving at least one config image
         "point_num_obs": collections.Counter(),  # config-image obs per point
+        "num_reproj_obs": 0,            # reprojection residuals only (no depth/priors)
     }
 
     # Phases 1/2: residuals (order matters — later phases read the counts).
@@ -388,12 +391,17 @@ def build_problem(
 
 
 class _SummaryShim:
-    """The three members callers in this file consume from a
-    pycolmap.BundleAdjustmentSummary, backed by a ceres SolverSummary."""
+    """The members callers in this file consume from a
+    pycolmap.BundleAdjustmentSummary, backed by a ceres SolverSummary.
 
-    def __init__(self, summary):
+    num_adjusted_observations counts reprojection residuals only — with
+    depth factors and affine priors in the problem, summary.num_residuals/2
+    no longer means what COLMAP's report expects."""
+
+    def __init__(self, summary, num_reproj_obs: int):
         self._summary = summary
         self.num_residuals = summary.num_residuals
+        self.num_adjusted_observations = num_reproj_obs
 
     def brief_report(self) -> str:
         return self._summary.BriefReport()
@@ -453,8 +461,14 @@ def solve_bundle_adjustment(
         solver_options = _manual_solver_options(ba_options.ceres)
     summary = pyceres.SolverSummary()
     pyceres.solve(solver_options, problem, summary)
-    _write_back(reconstruction, blocks)
-    return _SummaryShim(summary)
+    shim = _SummaryShim(summary, blocks["num_reproj_obs"])
+    # Only propagate a usable solution (stricter than stock, which leaves the
+    # failed iterate in the reconstruction and discards at a higher level).
+    if shim.is_solution_usable():
+        _write_back(reconstruction, blocks)
+    else:
+        logging.warning("BA solution unusable; reconstruction left unchanged")
+    return shim
 
 
 def adjust_global_bundle(
@@ -543,7 +557,9 @@ def iterative_global_refinement(
         if not adjust_global_bundle(mapper, mapper_options, ba_options, depth_ctx):
             return False
         if normalize_reconstruction:
-            reconstruction.normalize()
+            tform = reconstruction.normalize()
+            if depth_ctx is not None:
+                depth_ctx.rescale_affine(tform.scale)
         num_changed_observations = mapper.complete_and_merge_tracks(tri_options)
         num_changed_observations += mapper.filter_points(mapper_options)
         changed = (
@@ -652,7 +668,7 @@ def adjust_local_bundle(
         logging.info(summary.brief_report())
 
         image_ids = ba_config.images
-        report.num_adjusted_observations = int(summary.num_residuals / 2)
+        report.num_adjusted_observations = summary.num_adjusted_observations
         # Merge refined tracks with other existing points
         report.num_merged_observations = mapper.triangulator.merge_tracks(
             tri_options, variable_point3D_ids
