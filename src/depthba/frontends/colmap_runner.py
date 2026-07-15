@@ -76,7 +76,7 @@ def run() -> None:
         logging.info(f"#{idx} {rec.summary()}")
 
 
-def run_db(config, data_root, output_dir):
+def run_db(config, data_root, output_dir, vocab_tree_path=None):
     output_path = Path(output_dir)
     image_path = Path(data_root) / config.image_path
     database_path = output_path / "database.db"
@@ -141,6 +141,19 @@ def run_db(config, data_root, output_dir):
         pairing = pycolmap.SequentialPairingOptions()
         pairing.overlap = config.matching.overlap
         pairing.loop_detection = config.matching.loop_detection
+        if config.matching.loop_detection:
+            # Loop detection needs a vocab tree; the default path "." makes
+            # COLMAP download it from GitHub, which aborts on offline compute
+            # nodes. Require a pre-downloaded local file.
+            if vocab_tree_path is None:
+                raise ValueError(
+                    "matching.loop_detection=true requires --vocab_tree_path "
+                    "(download vocab_tree_faiss_flickr100K_words256K.bin on the "
+                    "login node; compute nodes have no internet)"
+                )
+            if not Path(vocab_tree_path).exists():
+                raise FileNotFoundError(f"vocab tree not found: {vocab_tree_path}")
+            pairing.vocab_tree_path = Path(vocab_tree_path)
         pycolmap.match_sequential(
             database_path,
             matching_options=matching_options,

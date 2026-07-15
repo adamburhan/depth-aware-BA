@@ -1,0 +1,19 @@
+# Tanks and Temples (video sequences, 1920x1080). One config for the
+# dataset; pick the scene with --sequence, e.g.:
+#   depthba-db --config configs/db/tt.yaml --data_root .../tanks_and_temples \
+#       --sequence Meetingroom --output_dir $OUT/meetingroom
+# Intrinsics per official T&T guidance: INITIAL values only (fx=fy=0.7*W,
+# principal point at center); refinement stays ON at the mapper stage.
+image_path: "{sequence}/images"
+stride: 1
+camera:
+  model: PINHOLE
+  width: 1920
+  height: 1080
+  params: [1344.0, 1344.0, 960.0, 540.0]   # 0.7*1920, 0.7*1920, W/2, H/2
+  single_camera: true
+matching:
+  method: exhaustive     # video: consecutive-frame pairing
+  overlap: 10
+  loop_detection: true
+seed: 0

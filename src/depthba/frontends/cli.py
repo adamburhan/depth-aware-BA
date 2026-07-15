@@ -13,6 +13,9 @@ def main_db() -> None:
     parser.add_argument("--sequence", default=None,
                         help="substituted into the config's image_path "
                              "'{sequence}' placeholder (dataset-level configs)")
+    parser.add_argument("--vocab_tree_path", default=None,
+                        help="local vocab tree .bin (required for "
+                             "matching.loop_detection; compute nodes can't download it)")
 
     args = parser.parse_args()
     config = DBConfig.load(args.config)
@@ -24,4 +27,4 @@ def main_db() -> None:
     elif args.sequence is not None:
         parser.error("--sequence given but config image_path has no {sequence} placeholder")
 
-    run_db(config, args.data_root, args.output_dir)
+    run_db(config, args.data_root, args.output_dir, args.vocab_tree_path)
