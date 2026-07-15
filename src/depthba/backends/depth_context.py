@@ -107,10 +107,16 @@ class DepthContext:
             return factor(float(row.modes[0]), sigma)
         factor = getattr(pyceres.factors, _MAXMIX_FACTORS[cfg.depth_space])
         sigmas = row.sigmas if row.sigmas is not None else np.full(num_modes, cfg.sigma)
+        # The C++ MaxMix factor requires weights > 0 (it takes their log);
+        # ingest allows weight == 0 and float32 storage can underflow a tiny
+        # softmax weight to exactly 0. Clamp to a floor far below any real
+        # weight — a near-zero-weight mode gets a huge log-penalty and is
+        # never selected, which is the correct "absent mode" behavior.
+        weights = np.maximum(row.weights.astype(np.float64), 1e-20)
         return factor(
             row.modes.astype(np.float64),
             sigmas.astype(np.float64),
-            row.weights.astype(np.float64),
+            weights,
         )
 
 
