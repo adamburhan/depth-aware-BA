@@ -5,8 +5,8 @@ depth_space: log
 depth_in_global: true
 depth_in_local: false     # second condition; requires filter-count + winner-stability diagnostics
 sigma: 0.15               # depthpro rows carry no sigmas; residual-space constant
-per_image_scale: true
-per_image_shift: true
+per_image_scale: false
+per_image_shift: false
 prior_sigma_alpha: null   # weak/no priors by default — informative linear-space
 prior_sigma_beta: null    # alpha prior fights the SfM gauge
 alpha_init: median        # per-image auto-scale warm start (alpha, NOT beta)
