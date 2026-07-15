@@ -122,6 +122,14 @@ def main() -> None:
     print(f"worst image: {used[worst]} ({pos_err[worst]:.4f} {unit}, "
           f"{rot_err[worst]:.3f} deg)")
 
+    # Drift profile: median error per 10%-of-trajectory bin, in frame order.
+    # Smoothly growing / locally bulging bins = accumulated drift; flat noisy
+    # bins = alignment or matching artifact.
+    order = np.argsort(used)
+    bins = np.array_split(order, 10)
+    profile = " ".join(f"{np.median(pos_err[b]):.3f}" for b in bins)
+    print(f"drift profile (median {unit} per trajectory tenth): {profile}")
+
 
 if __name__ == "__main__":
     main()
