@@ -79,6 +79,7 @@ def main() -> None:
     print(rec.summary())
 
     est_centers, gt_centers, est_R_cw, gt_R_cw, used = [], [], [], [], []
+    est_R_by_name, gt_R_by_name = {}, {}
     for image in rec.images.values():
         if image.name not in gt:
             continue
@@ -93,10 +94,28 @@ def main() -> None:
         gt_centers.append(c2w[:3, 3])
         gt_R_cw.append(c2w[:3, :3].T)
         used.append(image.name)
+        est_R_by_name[image.name] = R_cw
+        gt_R_by_name[image.name] = c2w[:3, :3].T
 
     est_centers = np.array(est_centers)
     gt_centers = np.array(gt_centers)
     print(f"\nimages compared: {len(used)} / {len(gt)} GT frames")
+
+    # RPE (rotation) between consecutive frames: gauge-free AND scale-free, so
+    # it needs no alignment. Distinguishes local geometric fidelity from
+    # global ATE effects. Tight RPE (~0.1-0.3deg) + large ATE => the ATE gap
+    # is global/alignment/intrinsics-scale, not a locally bad reconstruction.
+    ordered = sorted(n for n in used)
+    rpe = []
+    for a, b in zip(ordered[:-1], ordered[1:]):
+        est_rel = est_R_by_name[b] @ est_R_by_name[a].T
+        gt_rel = gt_R_by_name[b] @ gt_R_by_name[a].T
+        cos = np.clip((np.trace(est_rel @ gt_rel.T) - 1.0) / 2.0, -1.0, 1.0)
+        rpe.append(np.degrees(np.arccos(cos)))
+    rpe = np.array(rpe)
+    print(f"RPE rotation [deg] (consecutive, alignment-free): "
+          f"mean {rpe.mean():.4f}  median {np.median(rpe):.4f}  "
+          f"p90 {np.percentile(rpe, 90):.4f}  max {rpe.max():.4f}")
 
     scale, R_align, t_align = umeyama_sim3(est_centers, gt_centers)
     print(f"sim3 est->log: scale {scale:.4f}"
