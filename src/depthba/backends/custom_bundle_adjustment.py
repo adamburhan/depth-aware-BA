@@ -15,6 +15,7 @@ Monocular assumption: every image is its rig's reference sensor
 
 import collections
 import copy
+import os
 
 import numpy as np
 
@@ -459,6 +460,11 @@ def solve_bundle_adjustment(
     except Exception as exc:
         logging.warning(f"create_solver_options failed ({exc}); using manual options")
         solver_options = _manual_solver_options(ba_options.ceres)
+    # Under SLURM, cap ceres threads at the allocation (defaults probe the
+    # node's cores, oversubscribing the cgroup).
+    slurm_cpus = int(os.environ.get("SLURM_CPUS_PER_TASK", 0))
+    if slurm_cpus > 0:
+        solver_options.num_threads = slurm_cpus
     summary = pyceres.SolverSummary()
     pyceres.solve(solver_options, problem, summary)
     shim = _SummaryShim(summary, blocks["num_reproj_obs"])

@@ -1,3 +1,4 @@
+import os
 import shutil
 import urllib.request
 import zipfile
@@ -110,6 +111,17 @@ def run_db(config, data_root, output_dir):
         )[:: config.stride]
         logging.info(f"stride={config.stride}: {len(image_names)} images selected")
 
+    # COLMAP sizes thread pools to the NODE's cores, not the SLURM cgroup —
+    # ~100 SIFT threads in an 8-CPU/32GB allocation is an OOM kill.
+    num_threads = int(os.environ.get("SLURM_CPUS_PER_TASK", -1))
+    if num_threads > 0:
+        logging.info(f"Limiting COLMAP to {num_threads} threads (SLURM allocation)")
+
+    extraction_options = pycolmap.FeatureExtractionOptions()
+    extraction_options.num_threads = num_threads
+    matching_options = pycolmap.FeatureMatchingOptions()
+    matching_options.num_threads = num_threads
+
     camera_mode = (
         pycolmap.CameraMode.SINGLE if config.camera.single_camera
         else pycolmap.CameraMode.AUTO
@@ -120,15 +132,20 @@ def run_db(config, data_root, output_dir):
         image_names=image_names,
         camera_mode=camera_mode,
         reader_options=reader_options,
+        extraction_options=extraction_options,
     )
 
     if config.matching.method == "exhaustive":
-        pycolmap.match_exhaustive(database_path)
+        pycolmap.match_exhaustive(database_path, matching_options=matching_options)
     elif config.matching.method == "sequential":
         pairing = pycolmap.SequentialPairingOptions()
         pairing.overlap = config.matching.overlap
         pairing.loop_detection = config.matching.loop_detection
-        pycolmap.match_sequential(database_path, pairing_options=pairing)
+        pycolmap.match_sequential(
+            database_path,
+            matching_options=matching_options,
+            pairing_options=pairing,
+        )
     else:
         raise ValueError(f"unknown matching method: {config.matching.method!r}")
 
