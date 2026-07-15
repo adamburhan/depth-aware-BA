@@ -9,4 +9,4 @@ per_image_scale: false
 per_image_shift: false
 prior_sigma_alpha: null   # weak/no priors by default — informative linear-space
 prior_sigma_beta: null    # alpha prior fights the SfM gauge
-alpha_init: median        # per-image auto-scale warm start (alpha, NOT beta)
+alpha_init: unit        # per-image auto-scale warm start (alpha, NOT beta)
