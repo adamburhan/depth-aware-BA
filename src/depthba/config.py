@@ -78,3 +78,49 @@ class DBConfig:
             sift=SiftConfig(**raw.pop("sift", {})),
             **raw,
         )
+        
+        
+@dataclass
+class DepthBAConfig:
+    """Depth-factor layer for BA. Picks a sensor by name; everything about
+    that sensor (extractor method, K, sigma_space) is read from its
+    depthba_depth_meta row — the db is the single source of truth. Factor
+    arity follows meta.num_modes (1 -> plain, >1 -> max-mixture).
+
+    Deliberate omissions: no robust-loss knob on depth factors and no
+    wmin/gating knobs — both are later experimental conditions, added when
+    the experiment exists. Sky exclusion is unconditional by design.
+    """
+
+    sensor: str | None = None            # row key in depthba_depth_meta; None = depth off
+    depth_space: Literal["log", "linear", "inverse"] = "log"
+    depth_in_global: bool = True
+    depth_in_local: bool = False         # joins as SECOND condition, with diagnostics
+    sigma: float = 0.15                  # residual-space stddev for sensors without sigmas
+    per_image_scale: bool = True         # alpha block variable (else constant at 1.0)
+    per_image_shift: bool = True         # beta block variable (else constant at 0.0)
+    prior_sigma_alpha: float | None = None   # None = no prior (weak default per design)
+    prior_sigma_beta: float | None = None
+    alpha_init: Literal["median", "unit"] = "median"
+
+    def __post_init__(self) -> None:
+        # Literal is not enforced at runtime; a typo'd yaml value would
+        # otherwise sail through and misroute factor construction.
+        if self.depth_space not in ("log", "linear", "inverse"):
+            raise ValueError(f"depth_space must be log/linear/inverse, got {self.depth_space!r}")
+        if self.alpha_init not in ("median", "unit"):
+            raise ValueError(f"alpha_init must be median/unit, got {self.alpha_init!r}")
+        if self.sigma <= 0:
+            raise ValueError(f"sigma must be > 0, got {self.sigma}")
+        for name in ("prior_sigma_alpha", "prior_sigma_beta"):
+            value = getattr(self, name)
+            if value is not None and value <= 0:
+                raise ValueError(f"{name} must be > 0 or null, got {value}")
+
+    @classmethod
+    def load(cls, path: Path) -> "DepthBAConfig":
+        raw = yaml.safe_load(path.read_text())
+        unknown = set(raw) - {f.name for f in dataclasses.fields(cls)}
+        if unknown:
+            raise ValueError(f"Unknown config keys {unknown} in {path} — typo?")
+        return cls(**raw)
