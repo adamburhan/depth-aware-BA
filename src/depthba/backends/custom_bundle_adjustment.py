@@ -65,20 +65,23 @@ def _add_image_to_problem(problem, blocks, loss, ba_config, reconstruction, imag
     image = reconstruction.images[image_id]
     frame_id = image.frame_id
     camera_id = image.camera_id
-    if frame_id not in blocks["poses"]:
-        blocks["poses"][frame_id] = _pose7(image.frame)
-        if ba_config.has_constant_rig_from_world_pose(frame_id):
-            blocks["const_poses"].add(frame_id)
-    if camera_id not in blocks["cams"]:
-        blocks["cams"][camera_id] = (
-            reconstruction.cameras[camera_id].params.astype(np.float64).copy()
-        )
-    blocks["config_cams"].add(camera_id)
-
     camera = reconstruction.cameras[camera_id]
     for p2d in image.points2D:
         if not p2d.has_point3D():
             continue
+        # Blocks are created lazily, on the first residual that uses them:
+        # a config image can have ZERO triangulated observations (filtering
+        # can strip a registered image bare), and ceres rejects manifolds on
+        # blocks that never entered the problem.
+        if frame_id not in blocks["poses"]:
+            blocks["poses"][frame_id] = _pose7(image.frame)
+            if ba_config.has_constant_rig_from_world_pose(frame_id):
+                blocks["const_poses"].add(frame_id)
+        if camera_id not in blocks["cams"]:
+            blocks["cams"][camera_id] = (
+                reconstruction.cameras[camera_id].params.astype(np.float64).copy()
+            )
+        blocks["config_cams"].add(camera_id)
         point3D_id = p2d.point3D_id
         if point3D_id not in blocks["points"]:
             blocks["points"][point3D_id] = (
@@ -213,11 +216,12 @@ def _fix_gauge_two_cams(problem, blocks, ba_options, ba_config, reconstruction):
     coordinate (the largest-baseline one) of a second frame."""
     if not ba_options.refine_rig_from_world:
         return
-    # Config frames in deterministic order.
+    # Config frames in deterministic order (only those that actually
+    # contributed residuals — zero-observation images have no pose block).
     frames, seen = [], set()
     for image_id in sorted(ba_config.images):
         frame_id = reconstruction.images[image_id].frame_id
-        if frame_id not in seen:
+        if frame_id in blocks["poses"] and frame_id not in seen:
             seen.add(frame_id)
             frames.append(frame_id)
 
@@ -274,6 +278,8 @@ def _add_depth_factors(problem, blocks, ba_config, reconstruction, depth_ctx):
             continue
         image = reconstruction.images[image_id]
         frame_id = image.frame_id
+        if frame_id not in blocks["poses"]:
+            continue  # zero-observation image: no blocks in this problem
         pose_const = frame_id in blocks["const_poses"]
         if image_id not in depth_ctx.alphas and cfg.alpha_init == "median":
             depth_ctx.affine(image_id, median_depth_ratio(image, reconstruction, rows))
