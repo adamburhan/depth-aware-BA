@@ -80,7 +80,7 @@ def run_db(config, data_root, output_dir):
     image_path = Path(data_root) / config.image_path
     database_path = output_path / "database.db"
 
-    output_path.mkdir(exist_ok=True)
+    output_path.mkdir(exist_ok=True, parents=True)
     # The log filename is postfixed with the execution timestamp.
     logging.set_log_destination(logging.INFO, output_path / "INFO.log.")
 
@@ -91,24 +91,46 @@ def run_db(config, data_root, output_dir):
 
     if database_path.exists():
         database_path.unlink()
-        
+
     pycolmap.set_random_seed(config.seed)
-    
+
     reader_options = pycolmap.ImageReaderOptions()
-    reader_options.camera_model = "PINHOLE"
-    reader_options.camera_params = ",".join(map(str, config.camera.params)) if config.camera.params else None
-            
+    if config.camera.model is not None:
+        reader_options.camera_model = config.camera.model
+    if config.camera.params is not None:
+        # Initial values only; whether BA refines them is a mapper-stage
+        # choice (ba_refine_* on IncrementalPipelineOptions).
+        reader_options.camera_params = ",".join(map(str, config.camera.params))
+
+    # stride subsamples the (sorted) image list; stride=1 takes everything.
+    image_names = []
+    if config.stride > 1:
+        image_names = sorted(
+            p.name for p in image_path.iterdir() if p.is_file()
+        )[:: config.stride]
+        logging.info(f"stride={config.stride}: {len(image_names)} images selected")
+
+    camera_mode = (
+        pycolmap.CameraMode.SINGLE if config.camera.single_camera
+        else pycolmap.CameraMode.AUTO
+    )
     pycolmap.extract_features(
         database_path,
         image_path,
-        camera_mode=pycolmap.CameraMode.SINGLE,
-        reader_options=reader_options
+        image_names=image_names,
+        camera_mode=camera_mode,
+        reader_options=reader_options,
     )
-    
+
     if config.matching.method == "exhaustive":
         pycolmap.match_exhaustive(database_path)
     elif config.matching.method == "sequential":
-        pycolmap.match_sequential(database_path, config.matching.overlap, config.matching.loop_detection)
+        pairing = pycolmap.SequentialPairingOptions()
+        pairing.overlap = config.matching.overlap
+        pairing.loop_detection = config.matching.loop_detection
+        pycolmap.match_sequential(database_path, pairing_options=pairing)
+    else:
+        raise ValueError(f"unknown matching method: {config.matching.method!r}")
 
 
 if __name__ == "__main__":
