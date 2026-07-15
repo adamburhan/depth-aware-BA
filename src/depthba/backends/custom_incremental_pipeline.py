@@ -9,6 +9,8 @@ from pathlib import Path
 import enlighten
 
 from depthba.backends import custom_bundle_adjustment
+from depthba.backends.depth_context import DepthContext
+from depthba.config import DepthBAConfig
 
 import pycolmap
 from pycolmap import (
@@ -54,6 +56,7 @@ def iterative_global_refinement(
     options: IncrementalPipelineOptions,
     mapper_options: IncrementalMapperOptions,
     mapper: IncrementalMapper,
+    depth_ctx: DepthContext | None = None,
 ) -> None:
     logging.info("Retriangulation and Global bundle adjustment")
     # The following is equivalent to mapper.iterative_global_refinement(...)
@@ -64,6 +67,7 @@ def iterative_global_refinement(
         mapper_options,
         options.get_global_bundle_adjustment(),
         options.get_triangulation(),
+        depth_ctx=depth_ctx,
     )
     mapper.filter_frames(mapper_options)
 
@@ -73,6 +77,7 @@ def initialize_reconstruction(
     mapper: IncrementalMapper,
     mapper_options: IncrementalMapperOptions,
     reconstruction: Reconstruction,
+    depth_ctx: DepthContext | None = None,
 ) -> IncrementalPipelineStatus:
     """Equivalent to IncrementalPipeline.initialize_reconstruction(...)"""
     options = controller.options
@@ -115,7 +120,7 @@ def initialize_reconstruction(
     logging.info("Global bundle adjustment")
     # The following is equivalent to: mapper.adjust_global_bundle(...)
     custom_bundle_adjustment.adjust_global_bundle(
-        mapper, mapper_options, options.get_global_bundle_adjustment()
+        mapper, mapper_options, options.get_global_bundle_adjustment(), depth_ctx
     )
     reconstruction.normalize()
     mapper.filter_points(mapper_options)
@@ -137,6 +142,7 @@ def reconstruct_sub_model(
     mapper: IncrementalMapper,
     mapper_options: IncrementalMapperOptions,
     reconstruction: Reconstruction,
+    depth_ctx: DepthContext | None = None,
 ) -> IncrementalPipelineStatus:
     """Equivalent to IncrementalPipeline.reconstruct_sub_model(...)"""
     mapper.begin_reconstruction(reconstruction)
@@ -146,7 +152,7 @@ def reconstruct_sub_model(
 
     if reconstruction.num_reg_frames() == 0:
         init_status = initialize_reconstruction(
-            controller, mapper, mapper_options, reconstruction
+            controller, mapper, mapper_options, reconstruction, depth_ctx
         )
         if init_status != IncrementalPipelineStatus.SUCCESS:
             return init_status
@@ -247,11 +253,12 @@ def reconstruct_sub_model(
                 options.get_local_bundle_adjustment(),
                 options.get_triangulation(),
                 next_image_id,
+                depth_ctx=depth_ctx,
             )
             if controller.check_run_global_refinement(
                 reconstruction, ba_prev_num_reg_frames, ba_prev_num_points
             ):
-                iterative_global_refinement(options, mapper_options, mapper)
+                iterative_global_refinement(options, mapper_options, mapper, depth_ctx)
                 ba_prev_num_points = reconstruction.num_points3D()
                 ba_prev_num_reg_frames = reconstruction.num_reg_frames()
             if options.extract_colors:
@@ -277,7 +284,7 @@ def reconstruct_sub_model(
         if mapper.num_shared_reg_images() >= int(options.max_model_overlap):
             break
         if (not reg_next_success) and prev_reg_next_success:
-            iterative_global_refinement(options, mapper_options, mapper)
+            iterative_global_refinement(options, mapper_options, mapper, depth_ctx)
 
     if controller.check_reached_max_runtime():
         return pycolmap.IncrementalPipelineStatus.INTERRUPTED
@@ -288,7 +295,7 @@ def reconstruct_sub_model(
         and reconstruction.num_reg_frames() != ba_prev_num_reg_frames
         and reconstruction.num_points3D() != ba_prev_num_points
     ):
-        iterative_global_refinement(options, mapper_options, mapper)
+        iterative_global_refinement(options, mapper_options, mapper, depth_ctx)
     return IncrementalPipelineStatus.SUCCESS
 
 
@@ -297,6 +304,7 @@ def reconstruct(
     mapper: IncrementalMapper,
     mapper_options: IncrementalMapperOptions,
     continue_reconstruction: bool,
+    depth_ctx: DepthContext | None = None,
 ) -> IncrementalPipelineStatus:
     """Equivalent to IncrementalPipeline.reconstruct(...)"""
     options = controller.options
@@ -314,7 +322,7 @@ def reconstruct(
 
         reconstruction = reconstruction_manager.get(reconstruction_idx)
         status = reconstruct_sub_model(
-            controller, mapper, mapper_options, reconstruction
+            controller, mapper, mapper_options, reconstruction, depth_ctx
         )
         if status == IncrementalPipelineStatus.INTERRUPTED:
             reconstruction.update_point_3d_errors()
@@ -379,7 +387,10 @@ def reconstruct(
     return IncrementalPipelineStatus.CONTINUE
 
 
-def main_incremental_mapper(controller: IncrementalPipeline) -> None:
+def main_incremental_mapper(
+    controller: IncrementalPipeline,
+    depth_ctx: DepthContext | None = None,
+) -> None:
     """Equivalent to IncrementalPipeline.run()"""
     timer = pycolmap.Timer()
     timer.start()
@@ -410,7 +421,8 @@ def main_incremental_mapper(controller: IncrementalPipeline) -> None:
     mapper = IncrementalMapper(database_cache)
     mapper_options = controller.options.get_mapper()
     if (
-        reconstruct(controller, mapper, mapper_options, continue_reconstruction)
+        reconstruct(controller, mapper, mapper_options, continue_reconstruction,
+                    depth_ctx)
         == IncrementalPipelineStatus.STOP
     ):
         return
@@ -436,6 +448,7 @@ def main_incremental_mapper(controller: IncrementalPipeline) -> None:
                 mapper,
                 mapper_options,
                 continue_reconstruction=False,
+                depth_ctx=depth_ctx,
             )
             == IncrementalPipelineStatus.STOP
         ):
@@ -453,6 +466,7 @@ def main_incremental_mapper(controller: IncrementalPipeline) -> None:
                 mapper,
                 mapper_options,
                 continue_reconstruction=False,
+                depth_ctx=depth_ctx,
             )
             == IncrementalPipelineStatus.STOP
         ):
@@ -466,6 +480,7 @@ def main(
     output_path: Path,
     options: IncrementalPipelineOptions | None = None,
     input_path: Path | None = None,
+    depthba_config: Path | None = None,
 ) -> dict[int, Reconstruction]:
     if options is None:
         options = IncrementalPipelineOptions()
@@ -475,6 +490,19 @@ def main(
     if not image_path.exists():
         logging.fatal(f"Image path does not exist: {image_path}")
     output_path.mkdir(exist_ok=True, parents=True)
+
+    depth_ctx = None
+    if depthba_config is not None:
+        depth_config = DepthBAConfig.load(depthba_config)
+        depth_ctx = DepthContext.load(depth_config, database_path)
+        if depth_config.sensor is not None:
+            num_rows = sum(len(r) for r in depth_ctx.rows.values())
+            logging.info(
+                f"Depth-aware BA: sensor {depth_config.sensor!r}, "
+                f"{num_rows} rows over {len(depth_ctx.rows)} images "
+                f"(global={depth_config.depth_in_global}, "
+                f"local={depth_config.depth_in_local})"
+            )
     reconstruction_manager = ReconstructionManager()
     if input_path:
         reconstruction_manager.read(input_path)
@@ -495,7 +523,7 @@ def main(
                     IncrementalPipelineCallback.NEXT_IMAGE_REG_CALLBACK,
                     lambda: pbar.update(1),
                 )
-                main_incremental_mapper(mapper)
+                main_incremental_mapper(mapper, depth_ctx)
 
     # write and output
     reconstruction_manager.write(output_path)
@@ -511,6 +539,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--image_path", required=True)
     parser.add_argument("--input_path", default=None)
     parser.add_argument("--output_path", required=True)
+    parser.add_argument("--depthba_config", default=None,
+                        help="DepthBAConfig yaml (e.g. configs/depthba/depthpro_global.yaml); "
+                             "omit for the depth-off baseline")
     return parser.parse_args()
 
 
@@ -521,4 +552,5 @@ if __name__ == "__main__":
         image_path=Path(args.image_path),
         input_path=Path(args.input_path) if args.input_path else None,
         output_path=Path(args.output_path),
+        depthba_config=Path(args.depthba_config) if args.depthba_config else None,
     )
