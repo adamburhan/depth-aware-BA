@@ -15,5 +15,5 @@ camera:
 matching:
   method: sequential      # video: consecutive-frame pairing
   overlap: 10
-  loop_detection: false
+  loop_detection: true
 seed: 0
