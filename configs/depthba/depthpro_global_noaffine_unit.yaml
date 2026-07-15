@@ -1,12 +1,12 @@
-# Ablation rung 3: RAW metric trust (alpha = 1 frozen, beta = 0 frozen).
-# Kicker: catastrophic — 213mm / 2.65deg, half the map filtered, 29/31.
-# Verified NOT a bug (hand-computed cost matches: 2.89e5, 3.32 sigma/factor):
-# the frozen alpha demands the map be in DepthPro-meters while the gauge
-# pins the map at its arbitrary SfM scale (1.76x meters); the ~3.3 sigma
-# unresolvable disagreement warps geometry locally instead of rescaling.
-# DepthPro's own global scale is within ~7% of truth here — the FAIR
-# raw-metric condition needs scale freedom (alpha-anchored gauge or one
-# shared global alpha), which is a future condition.
+# Ablation rung 3: affine frozen at alpha=1/beta=0 AT CREATION, then tracked
+# through normalize() rescaling (rescale_affine). Semantics: one shared
+# init-time scale snapshot per image, no per-image correction — NOT raw
+# metric trust (rescale-tracking erases the absolute-meters demand; the true
+# raw-metric condition requires the alpha-anchored gauge, future work).
+# Kicker (post-fix): 6.5mm / 0.119deg vs 4.8mm / 0.085deg with affine —
+# per-image scale freedom is worth ~35% here.
+# History: pre-rescale-fix this config produced 213mm / 2.65deg — frozen
+# alpha fighting the drifting normalize scale frame; artifact, superseded.
 sensor: depthpro
 depth_space: log
 depth_in_global: true
