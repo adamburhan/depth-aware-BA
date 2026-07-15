@@ -18,8 +18,17 @@ import numpy as np
 import pycolmap
 
 
+def normalize_image_names(rec: pycolmap.Reconstruction) -> None:
+    """Strip directory prefixes: ETH3D GT stores 'dslr_images_undistorted/DSC_x.JPG'
+    while our db (built with image_path inside that dir) stores bare names —
+    comparison matches by exact string."""
+    for image in rec.images.values():
+        image.name = Path(image.name).name
+
+
 def evaluate(gt: pycolmap.Reconstruction, rec_path: Path) -> None:
     rec = pycolmap.Reconstruction(rec_path)
+    normalize_image_names(rec)
     print(f"\n=== {rec_path} ===")
     print(f"registered: {rec.num_reg_images()} (GT: {gt.num_reg_images()})")
 
@@ -59,6 +68,7 @@ def main() -> None:
     args = parser.parse_args()
 
     gt = pycolmap.Reconstruction(args.gt)
+    normalize_image_names(gt)
     for rec_path in args.reconstructions:
         evaluate(gt, Path(rec_path))
 
