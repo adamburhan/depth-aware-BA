@@ -48,17 +48,10 @@ def _pixel_indices(
     return v, u
 
 
-def _not_implemented(name: str) -> ExtractorFn:
-    def stub(bundle: DepthBundle, keypoints: np.ndarray, params: dict) -> DepthMeasurements:
-        raise NotImplementedError(f"{name} extractor not yet implemented")
-
-    return stub
-
-
-from depthba.depth.extractors import mda, unimodal  
+from depthba.depth.extractors import gmm_patch, mda, unimodal
 
 EXTRACTORS: dict[str, ExtractorFn] = {
     "unimodal": unimodal.extract,
     "mda_native": mda.extract,
-    "gmm_patch": _not_implemented("gmm_patch"),
+    "gmm_patch": gmm_patch.extract,
 }
