@@ -1,0 +1,11 @@
+image_path: relief_2/images/dslr_images_undistorted
+stride: 1
+camera:
+  model: PINHOLE
+  width: 6212
+  height: 4139
+  params: [3413.07, 3413.66, 3120.94, 2064.52]
+  single_camera: true
+matching:
+  method: exhaustive # exhaustive or sequential
+seed: 0

@@ -1,0 +1,11 @@
+image_path: office/images/dslr_images_undistorted
+stride: 1
+camera:
+  model: PINHOLE
+  width: 6221
+  height: 4146
+  params: [3437.84, 3435.95, 3127.19, 2066.98]
+  single_camera: true
+matching:
+  method: exhaustive # exhaustive or sequential
+seed: 0

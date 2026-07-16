@@ -1,4 +1,4 @@
-image_path: kicker/images/dslr_images_undistorted
+image_path: terrace/images/dslr_images_undistorted
 stride: 1
 camera:
   model: PINHOLE

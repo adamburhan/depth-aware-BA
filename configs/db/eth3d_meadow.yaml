@@ -1,0 +1,11 @@
+image_path: meadow/images/dslr_images_undistorted
+stride: 1
+camera:
+  model: PINHOLE
+  width: 6201
+  height: 4135
+  params: [3406.79, 3404.57, 3117.79, 2065.86]
+  single_camera: true
+matching:
+  method: exhaustive # exhaustive or sequential
+seed: 0

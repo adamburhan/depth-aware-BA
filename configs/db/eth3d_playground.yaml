@@ -1,0 +1,11 @@
+image_path: playground/images/dslr_images_undistorted
+stride: 1
+camera:
+  model: PINHOLE
+  width: 1920
+  height: 1080
+  params: [3408.35, 3408.35, 3117.4, 2064.07]
+  single_camera: true
+matching:
+  method: exhaustive # exhaustive or sequential
+seed: 0

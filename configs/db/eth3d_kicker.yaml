@@ -1,0 +1,11 @@
+image_path: kicker/images/dslr_images_undistorted
+stride: 1
+camera:
+  model: PINHOLE
+  width: 6211
+  height: 4137
+  params: [3410.34, 3409.98, 3121.33, 2067.07]
+  single_camera: true
+matching:
+  method: exhaustive # exhaustive or sequential
+seed: 0
