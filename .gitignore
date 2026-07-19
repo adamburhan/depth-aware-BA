@@ -5,3 +5,4 @@ __pycache__/
 # experiment outputs
 example/
 *.log.*
+plots/
