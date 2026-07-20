@@ -32,14 +32,6 @@ def _weighted_em(y, sw, mu0, sig_floor, wmin, sep_min, max_iter):
     Returns (mu1, s0, s1, w0, w1) in log space. Collapses to unimodal
     (mu1 = mu0, w1 = wmin) when the patch is flat / undersampled, or when the
     fitted second mode is unsupported or too close to the anchor.
-
-    Log space is deliberate: the residual factors whiten in log depth (the
-    only domain where the arbitrary SfM map scale cancels), so log-space
-    sigmas need no conversion, and the floor/gate are scale-invariant
-    (constant log sigma == relative error). sig_floor also encodes sensor
-    error: patch variance on a flat surface says nothing about network
-    accuracy, so a near-delta sigma there would overweight the depth factor
-    against reprojection terms.
     """
     W = sw.sum()
     ybar = (sw * y).sum() / max(W, _TINY)
@@ -76,11 +68,17 @@ def extract(
     h, w = depth.shape
     c = params.get("patch_scale", 4.0)          # r = c * sqrt(det A)
     r_min = params.get("r_min", 2)
-    sig_floor = params.get("sigma_log_min", 0.05)   # log sigma floor (~5% relative)
     wmin = params.get("wmin", 0.05)                 # min 2nd-mode weight
-    sep_min = params.get("sep_log_min", 0.1)        # min |mu1 - mu0| in log (~10%)
     max_iter = params.get("em_iters", 30)
-
+    uniform_prior = params.get("uniform_prior", True)  # uniform prior on pi's
+    
+    # depth_space = params.get("depth_space", "linear")
+    # if depth_space == 'linear':
+    #     sig_floor = params.get("sigma_linear_min", 0.02)
+    # elif depth_space == 'log':
+    sig_floor = params.get("sigma_log_min", 0.05)   # log sigma floor (~5% relative)
+    sep_min = params.get("sep_log_min", 0.1)        # min |mu1 - mu0| in log (~10%)
+        
     v_kp, u_kp = _pixel_indices(keypoints, (h, w))
     d_kp = depth[v_kp, u_kp].astype(np.float64)     # committed map value (== unimodal)
 
@@ -97,7 +95,8 @@ def extract(
     disk_cache: dict[int, tuple[np.ndarray, np.ndarray]] = {}
     for i in range(n):
         vi, ui = int(v_kp[i]), int(u_kp[i])
-        mu0 = np.log(_robust_anchor(depth, vi, ui, h, w, float(d_kp[i])))
+        #mu0 = np.log(_robust_anchor(depth, vi, ui, h, w, float(d_kp[i])))
+        mu0 = np.log(max(d_kp[i], _TINY))  
 
         dv, du = disk_cache.setdefault(int(radii[i]), _disk(int(radii[i])))
         vv, uu = vi + dv, ui + du
@@ -114,7 +113,11 @@ def extract(
         )
         modes[i] = (np.exp(mu0), np.exp(mu1))
         sigmas[i] = (s0, s1)
-        weights[i] = (p0, p1)
+        
+        if uniform_prior:
+            weights[i] = (0.5, 0.5)
+        else:
+            weights[i] = (p0, p1)
 
     return DepthMeasurements(
         modes=modes,

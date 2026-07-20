@@ -6,7 +6,7 @@ sensor: amb3r
 depth_space: log
 depth_in_global: true
 depth_in_local: false
-sigma: 0.15
+sigma: 0.05
 huber_scale: 2.0
 shared_scale: true
 per_image_scale: false
