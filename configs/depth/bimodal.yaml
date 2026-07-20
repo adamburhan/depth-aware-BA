@@ -1,4 +1,4 @@
-sensor: depthpro_gmm          
+sensor: amb3r_gmm          
 method: gmm_patch          
-sigma_space: log         
+sigma_space: linear         
 method_params: {}
