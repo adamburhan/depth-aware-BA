@@ -87,9 +87,9 @@ class DepthBAConfig:
     depthba_depth_meta row — the db is the single source of truth. Factor
     arity follows meta.num_modes (1 -> plain, >1 -> max-mixture).
 
-    Deliberate omissions: no robust-loss knob on depth factors and no
-    wmin/gating knobs — both are later experimental conditions, added when
-    the experiment exists. Sky exclusion is unconditional by design.
+    Deliberate omissions: no wmin/gating knobs — later experimental
+    conditions, added when the experiment exists. Sky exclusion is
+    unconditional by design.
     """
 
     sensor: str | None = None            # row key in depthba_depth_meta; None = depth off
@@ -97,6 +97,15 @@ class DepthBAConfig:
     depth_in_global: bool = True
     depth_in_local: bool = False         # joins as SECOND condition, with diagnostics
     sigma: float = 0.15                  # residual-space stddev for sensors without sigmas
+    huber_scale: float | None = None     # Huber transition on depth factors, in whitened
+                                         # sigmas; None = quadratic. Motivated by the
+                                         # heavy-tailed z/mu residuals (bulk ~4%, std 6x
+                                         # the robust spread) measured on tt_amb3r.
+    shared_scale: bool = False           # ONE alpha for the whole map, frozen at the
+                                         # first median snapshot (beta frozen at 0) —
+                                         # for scale-consistent sensors, where
+                                         # per-image snapshots would inject scale
+                                         # noise the sensor doesn't have
     per_image_scale: bool = True         # alpha block variable (else constant at 1.0)
     per_image_shift: bool = True         # beta block variable (else constant at 0.0)
     prior_sigma_alpha: float | None = None   # None = no prior (weak default per design)
@@ -112,6 +121,13 @@ class DepthBAConfig:
             raise ValueError(f"alpha_init must be median/unit, got {self.alpha_init!r}")
         if self.sigma <= 0:
             raise ValueError(f"sigma must be > 0, got {self.sigma}")
+        if self.huber_scale is not None and self.huber_scale <= 0:
+            raise ValueError(f"huber_scale must be > 0 or null, got {self.huber_scale}")
+        if self.shared_scale and (self.per_image_scale or self.per_image_shift):
+            raise ValueError(
+                "shared_scale is exclusive with per_image_scale/per_image_shift: "
+                "one global alpha replaces the per-image affine blocks"
+            )
         for name in ("prior_sigma_alpha", "prior_sigma_beta"):
             value = getattr(self, name)
             if value is not None and value <= 0:

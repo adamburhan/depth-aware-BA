@@ -1,11 +1,14 @@
 # Unimodal control: same dump, plain depth factors in global BA.
 # amb3r sensor emits no sigmas (sigma_space null), so sigma: 0.15 is the
 # log-residual-space constant actually used.
+# Same shared_scale + huber treatment as the gmm arm (see amb3r_gmm_global).
 sensor: amb3r
 depth_space: log
 depth_in_global: true
 depth_in_local: false
 sigma: 0.15
+huber_scale: 2.0
+shared_scale: true
 per_image_scale: false
 per_image_shift: false
 prior_sigma_alpha: null

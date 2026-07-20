@@ -78,13 +78,22 @@ class DepthContext:
             return False
         return self.config.depth_in_global if in_global else self.config.depth_in_local
 
+    def _affine_key(self, image_id: int) -> int:
+        # shared_scale: every image resolves to one global block (sentinel key)
+        return -1 if self.config.shared_scale else image_id
+
+    def has_affine(self, image_id: int) -> bool:
+        return self._affine_key(image_id) in self.alphas
+
     def affine(self, image_id: int, alpha0: float = 1.0):
         """Get-or-create the persistent alpha/beta blocks for an image.
-        alpha0 is used only at creation (the image's first BA appearance)."""
-        if image_id not in self.alphas:
-            self.alphas[image_id] = np.array([float(alpha0)], dtype=np.float64)
-            self.betas[image_id] = np.array([0.0], dtype=np.float64)
-        return self.alphas[image_id], self.betas[image_id]
+        alpha0 is used only at creation (the image's first BA appearance;
+        under shared_scale, the whole map's first)."""
+        key = self._affine_key(image_id)
+        if key not in self.alphas:
+            self.alphas[key] = np.array([float(alpha0)], dtype=np.float64)
+            self.betas[key] = np.array([0.0], dtype=np.float64)
+        return self.alphas[key], self.betas[key]
 
     def rescale_affine(self, scale: float) -> None:
         """Keep alpha/beta consistent when reconstruction.normalize() rescales

@@ -274,6 +274,9 @@ def _add_depth_factors(problem, blocks, ba_config, reconstruction, depth_ctx):
     """Phase 5 (ours): depth factors on the SAME pose/point blocks as the
     reprojection residuals, plus per-image alpha/beta with optional priors."""
     cfg = depth_ctx.config
+    depth_loss = (
+        pyceres.HuberLoss(cfg.huber_scale) if cfg.huber_scale is not None else None
+    )
     num_added = 0
     for image_id in sorted(ba_config.images):
         rows = depth_ctx.rows.get(image_id)
@@ -284,7 +287,7 @@ def _add_depth_factors(problem, blocks, ba_config, reconstruction, depth_ctx):
         if frame_id not in blocks["poses"]:
             continue  # zero-observation image: no blocks in this problem
         pose_const = frame_id in blocks["const_poses"]
-        if image_id not in depth_ctx.alphas and cfg.alpha_init == "median":
+        if not depth_ctx.has_affine(image_id) and cfg.alpha_init == "median":
             depth_ctx.affine(image_id, median_depth_ratio(image, reconstruction, rows))
         alpha, beta = depth_ctx.affine(image_id)
 
@@ -299,7 +302,7 @@ def _add_depth_factors(problem, blocks, ba_config, reconstruction, depth_ctx):
             if pose_const and point3D_id in blocks["const_points"]:
                 continue  # dead factor: nothing variable to constrain
             problem.add_residual_block(
-                depth_ctx.make_cost(row), None,
+                depth_ctx.make_cost(row), depth_loss,
                 [blocks["poses"][frame_id], blocks["points"][point3D_id],
                  alpha, beta],
             )
@@ -307,6 +310,14 @@ def _add_depth_factors(problem, blocks, ba_config, reconstruction, depth_ctx):
         if num_added == num_before:
             continue  # alpha/beta never entered this problem
 
+        if cfg.shared_scale:
+            # one global alpha frozen at its creation median (tracked through
+            # normalize() rescaling); metric sensor -> no shift. A snapshot
+            # error here is a uniform scale offset shared by all factors --
+            # the map converges at that scale instead of warping.
+            problem.set_parameter_block_constant(alpha)
+            problem.set_parameter_block_constant(beta)
+            continue
         if not cfg.per_image_scale:
             problem.set_parameter_block_constant(alpha)
         elif cfg.prior_sigma_alpha is not None:

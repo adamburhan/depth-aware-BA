@@ -2,11 +2,17 @@
 # depth_space log matches the sensor's log-space sigmas (gmm_patch fits in
 # log; the only domain where the arbitrary SfM map scale cancels in the
 # factor). sigma: 0.15 is dead here (rows carry sigmas).
+# shared_scale + huber per the tt_amb3r/Meetingroom diagnostic (18-07-2026):
+# across-image scale spread 1.6% (sensor is scale-consistent -> one global
+# alpha, not 371 frozen snapshots), residuals heavy-tailed (bulk ~4%,
+# std 6x robust) -> Huber at 2 whitened sigmas.
 sensor: amb3r_gmm
 depth_space: log
 depth_in_global: true
 depth_in_local: false
 sigma: 0.15
+huber_scale: 2.0
+shared_scale: true
 per_image_scale: false
 per_image_shift: false
 prior_sigma_alpha: null
