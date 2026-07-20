@@ -1,4 +1,4 @@
-sensor: depthpro          # meta-row key; sensor = method + params applied to a dump
+sensor: amb3r          # meta-row key; sensor = method + params applied to a dump
 method: unimodal          # key into extractors.EXTRACTORS
 sigma_space: null         # unimodal on a sigma-less dump emits no sigmas
 method_params: {}
