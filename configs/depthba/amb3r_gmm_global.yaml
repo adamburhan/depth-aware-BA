@@ -2,7 +2,7 @@
 # depth_space MUST be linear: the gmm_patch sensor stores linear-meter
 # sigmas and sigma-space conversion is not implemented (depth_context
 # raises otherwise). sigma: 0.15 is dead here (rows carry sigmas).
-sensor: depthpro_gmm
+sensor: amb3r_gmm
 depth_space: linear
 depth_in_global: true
 depth_in_local: false
