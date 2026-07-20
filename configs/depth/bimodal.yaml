@@ -1,4 +1,4 @@
 sensor: amb3r_gmm          
 method: gmm_patch          
-sigma_space: linear         
+sigma_space: log         
 method_params: {}

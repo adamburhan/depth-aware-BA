@@ -1,9 +1,9 @@
 # First bimodal condition: patch-GMM max-mixture factors in global BA.
-# depth_space MUST be linear: the gmm_patch sensor stores linear-meter
-# sigmas and sigma-space conversion is not implemented (depth_context
-# raises otherwise). sigma: 0.15 is dead here (rows carry sigmas).
+# depth_space log matches the sensor's log-space sigmas (gmm_patch fits in
+# log; the only domain where the arbitrary SfM map scale cancels in the
+# factor). sigma: 0.15 is dead here (rows carry sigmas).
 sensor: amb3r_gmm
-depth_space: linear
+depth_space: log
 depth_in_global: true
 depth_in_local: false
 sigma: 0.15
