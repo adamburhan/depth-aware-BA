@@ -11,9 +11,6 @@ class CameraConfig:
     # manual-only fields:
     model: str | None = None                    # "PINHOLE", ...
     params: list[float] | None = None           # fx, fy, cx, cy
-    width: int | None = None
-    height: int | None = None
-    intrinsics_are_approximate: bool = False
 
 
 @dataclass

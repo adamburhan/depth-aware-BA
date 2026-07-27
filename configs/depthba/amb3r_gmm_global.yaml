@@ -1,7 +1,7 @@
 # First bimodal condition: patch-GMM max-mixture factors in global BA.
 # depth_space log matches the sensor's log-space sigmas (gmm_patch fits in
 # log; the only domain where the arbitrary SfM map scale cancels in the
-# factor). sigma: 0.15 is dead here (rows carry sigmas).
+# factor). sigma is dead here (rows carry per-mode sigmas).
 # shared_scale + huber per the tt_amb3r/Meetingroom diagnostic (18-07-2026):
 # across-image scale spread 1.6% (sensor is scale-consistent -> one global
 # alpha, not 371 frozen snapshots), residuals heavy-tailed (bulk ~4%,

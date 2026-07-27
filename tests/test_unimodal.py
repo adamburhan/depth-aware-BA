@@ -6,7 +6,6 @@ floor(x). Later extractors inherit the convention by copying this fixture.
 """
 
 import numpy as np
-import pytest
 
 from depthba.depth.extractors import EXTRACTORS
 from depthba.depth.extractors.unimodal import extract
@@ -110,5 +109,3 @@ def test_unimodal_on_mixture_bundle():
 
 def test_registry():
     assert EXTRACTORS["unimodal"] is extract
-    with pytest.raises(NotImplementedError):
-        EXTRACTORS["gmm_patch"](make_bundle(), kps((0.0, 0.0)), {})

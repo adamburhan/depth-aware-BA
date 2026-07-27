@@ -15,6 +15,7 @@ dependencies = [
     # same vcpkg snapshot) — BA prototyping happens on Linux (snoopy/cluster).
     "pyceres==2.7.2; sys_platform == 'linux'",
     "pyyaml>=6.0",
+    "viser>=1.0.30",
 ]
 
 # pyceres comes from our fork's release wheels (depth factors; vcpkg snapshot
