@@ -18,27 +18,20 @@ def _disk(r: int) -> tuple[np.ndarray, np.ndarray]:
     return dv[m], du[m]
 
 
-def _robust_anchor(depth: np.ndarray, v: int, u: int, h: int, w: int, fallback: float) -> float:
-    """Median of the valid inner 3x3 around (v, u); fallback if none valid."""
-    block = depth[max(v - 1, 0):min(v + 2, h), max(u - 1, 0):min(u + 2, w)].reshape(-1)
-    block = block[np.isfinite(block) & (block > 0)]
-    d = float(np.median(block)) if block.size else fallback
-    return max(d, _TINY)
-
-
-def _weighted_em(y, sw, mu0, sig_floor, wmin, sep_min, max_iter):
-    """Anchored, spatially-weighted 2-comp 1D EM in LOG depth. mu0 fixed.
+def _em(y, mu0, sig_floor, wmin, sep_min, max_iter):
+    """Anchored 2-comp 1D EM in LOG depth. mu0 fixed, all samples equal weight.
 
     Returns (mu1, s0, s1, w0, w1) in log space. Collapses to unimodal
     (mu1 = mu0, w1 = wmin) when the patch is flat / undersampled, or when the
     fitted second mode is unsupported or too close to the anchor.
     """
-    W = sw.sum()
-    ybar = (sw * y).sum() / max(W, _TINY)
-    yvar = (sw * (y - ybar) ** 2).sum() / max(W, _TINY)
+    n = y.size
+    # degenerate: too few samples -> unimodal (yvar would be 0, so s = floor)
+    if n < 2:
+        return mu0, sig_floor, sig_floor, 1.0 - wmin, wmin
+    yvar = y.var()
     s_init = max(np.sqrt(yvar), sig_floor)
-    # degenerate: too few samples or flat patch -> unimodal
-    if y.size < 2 or yvar < sig_floor * sig_floor:
+    if yvar < sig_floor * sig_floor:          # flat patch -> unimodal
         return mu0, s_init, s_init, 1.0 - wmin, wmin
 
     mu1 = y[np.argmax(np.abs(y - mu0))]       # farthest sample seeds mode 1
@@ -49,11 +42,11 @@ def _weighted_em(y, sw, mu0, sig_floor, wmin, sep_min, max_iter):
         g1 = p1 * np.exp(-0.5 * ((y - mu1) / s1) ** 2) / s1
         den = g0 + g1 + _TINY
         r0, r1 = g0 / den, g1 / den
-        n0, n1 = (sw * r0).sum(), (sw * r1).sum()
-        p0, p1 = n0 / W, n1 / W
-        mu1 = (sw * r1 * y).sum() / max(n1, _TINY)   # mu0 stays fixed
-        s0 = max(np.sqrt((sw * r0 * (y - mu0) ** 2).sum() / max(n0, _TINY)), sig_floor)
-        s1 = max(np.sqrt((sw * r1 * (y - mu1) ** 2).sum() / max(n1, _TINY)), sig_floor)
+        n0, n1 = r0.sum(), r1.sum()
+        p0, p1 = n0 / n, n1 / n
+        mu1 = (r1 * y).sum() / max(n1, _TINY)        # mu0 stays fixed
+        s0 = max(np.sqrt((r0 * (y - mu0) ** 2).sum() / max(n0, _TINY)), sig_floor)
+        s1 = max(np.sqrt((r1 * (y - mu1) ** 2).sum() / max(n1, _TINY)), sig_floor)
 
     # joint gate: keep the second mode only if supported AND separated
     if p1 < wmin or abs(mu1 - mu0) < sep_min:
@@ -101,15 +94,11 @@ def extract(
         dv, du = disk_cache.setdefault(int(radii[i]), _disk(int(radii[i])))
         vv, uu = vi + dv, ui + du
         inb = (vv >= 0) & (vv < h) & (uu >= 0) & (uu < w)
-        dvi, dui = dv[inb], du[inb]
         dpatch = depth[vv[inb], uu[inb]].astype(np.float64)
-        valid = np.isfinite(dpatch) & (dpatch > 0)
-        dpatch, dvi, dui = dpatch[valid], dvi[valid], dui[valid]
+        dpatch = dpatch[np.isfinite(dpatch) & (dpatch > 0)]
 
-        ss = max(sigma_s[i], _TINY)
-        sw = np.exp(-(dvi * dvi + dui * dui) / (2.0 * ss * ss))
-        mu1, s0, s1, p0, p1 = _weighted_em(
-            np.log(dpatch), sw, mu0, sig_floor, wmin, sep_min, max_iter
+        mu1, s0, s1, p0, p1 = _em(
+            np.log(dpatch), mu0, sig_floor, wmin, sep_min, max_iter
         )
         modes[i] = (np.exp(mu0), np.exp(mu1))
         sigmas[i] = (s0, s1)
