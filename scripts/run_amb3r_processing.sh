@@ -19,4 +19,7 @@ seq=${sequences[$SLURM_ARRAY_TASK_ID]}
 
 repo_root=$HOME/repos/depth-aware-BA/
 cd $repo_root
-python scripts/process_amb3r_outputs.py --npz ~/scratch/datasets/scannetpp/data/amb3r/$seq/scene_${seq}_results.npz --out ~/scratch/datasets/scannetpp/data/amb3r/$seq
+python scripts/process_amb3r_outputs.py \
+	--npz ~/scratch/datasets/scannetpp/data/amb3r/$seq/scene_${seq}_results.npz \
+	--out ~/scratch/datasets/scannetpp/data/amb3r/$seq \
+	--rgb_dir ~/scratch/datasets/scannetpp/data/$seq/iphone/undistorted/images/
