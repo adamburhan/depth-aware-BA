@@ -4,14 +4,14 @@ import numpy as np
 from pathlib import Path
 from PIL import Image
 
-def name_for_index(i: int) -> str:
-    return f"{i+1:06d}"          # T&T convention: npz idx i <-> file 000001-based
-
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--npz', required=True)
     ap.add_argument('--out', required=True)
+    ap.add_argument('--rgb_dir', required=True)
     args = ap.parse_args()
+    
+    names = sorted(p.stem for p in Path(args.rgb_dir).glob('*.jpg'))
 
     out = Path(args.out)
     (out / 'depth_bundles').mkdir(parents=True, exist_ok=True)
@@ -23,6 +23,8 @@ def main():
     imgs = d['images']                           # (T,3,H,W) in [-1,1], RGB
     unmapped = set(d['unmapped_frames'].tolist())
     T = pts.shape[0]
+    
+    assert len(names) == T, f"{len(names)} images vs {T} npz frames"
 
     # ---- depth: undo the cam2world wrap ----
     R, t = pose[:, :3, :3], pose[:, :3, 3]
@@ -41,7 +43,7 @@ def main():
 
     n_saved = 0
     for i in range(T):
-        stem = name_for_index(i)
+        stem = names[i]
         Image.fromarray(imgs_u8[i]).save(out / 'images' / f'{stem}.png')
         if i in unmapped:
             continue                             # image saved (COLMAP can use it); no bundle
