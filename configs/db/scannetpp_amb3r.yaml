@@ -1,0 +1,11 @@
+image_path: "{sequence}/images"
+stride: 1
+camera:
+  model: PINHOLE
+  params: [398.7, 399.6, 258.6, 196.0]  
+  single_camera: true
+matching:
+  method: exhaustive     # video: consecutive-frame pairing
+  overlap: 10
+  loop_detection: false
+seed: 0
