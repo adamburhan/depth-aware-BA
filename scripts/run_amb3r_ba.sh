@@ -2,9 +2,9 @@
 #SBATCH --cpus-per-task=6
 #SBATCH --mem=32G
 #SBATCH --time=4:00:00
-#SBATCH --array=0-14
-#SBATCH --job-name=tt_amb3r_ba
-#SBATCH --output=/network/scratch/a/adam.burhan/logs/tt_BA_amb3r_%A_%a.out
+#SBATCH --array=0-2
+#SBATCH --job-name=scannetpp_amb3r_ba
+#SBATCH --output=/network/scratch/a/adam.burhan/logs/scannetpp_BA_amb3r_%A_%a.out
 
 set -euo pipefail
 
@@ -13,14 +13,18 @@ configs=(
     amb3r_gmm_global.yaml
     amb3r_unimodal_global.yaml
 )
+# sequences=(
+#     Barn
+#     Caterpillar
+#     # Church
+#     # Courthouse
+#     Ignatius
+#     Meetingroom
+#     Truck
+# )
+
 sequences=(
-    Barn
-    Caterpillar
-    # Church
-    # Courthouse
-    Ignatius
-    Meetingroom
-    Truck
+    09c1414f1b
 )
 
 n_seq=${#sequences[@]}
@@ -30,8 +34,8 @@ seq=${sequences[$((SLURM_ARRAY_TASK_ID % n_seq))]}
 repo_root=$HOME/repos/depth-aware-BA/
 cd $repo_root
 
-data=$SCRATCH/datasets/tanks_and_temples/amb3r/$seq
-db=$SCRATCH/experiments/depth-aware-ba/tt_amb3r/$seq/database.db
+data=$SCRATCH/datasets/scannetpp/data/amb3r/$seq
+db=$SCRATCH/experiments/depth-aware-ba/scannetpp_amb3r/$seq/database.db
 
 case "$mode" in
     none)
@@ -42,7 +46,7 @@ case "$mode" in
         label=unimodal; depth_arg="--depthba_config ${repo_root}/configs/depthba/${mode}" ;;
 esac
 
-out=$SCRATCH/experiments/depth-aware-ba/tt_amb3r/$seq/sfm_$label
+out=$SCRATCH/experiments/depth-aware-ba/scannetpp_amb3r/$seq/sfm_$label
 
 echo "=== $seq / $label ==="
 echo "commit: $(git rev-parse --short HEAD)"
