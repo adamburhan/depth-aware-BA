@@ -19,11 +19,14 @@ import pycolmap
 
 
 def normalize_image_names(rec: pycolmap.Reconstruction) -> None:
-    """Strip directory prefixes: ETH3D GT stores 'dslr_images_undistorted/DSC_x.JPG'
-    while our db (built with image_path inside that dir) stores bare names —
-    comparison matches by exact string."""
+    """Strip directory prefixes AND extensions: ETH3D GT stores
+    'dslr_images_undistorted/DSC_x.JPG' while our db (built with image_path
+    inside that dir) stores bare names — comparison matches by exact string.
+    Extensions must go too: the ScanNet++ COLMAP model names frames
+    'DSC_x.JPG' while our AMB3R-rendered dumps are 'DSC_x.png', which would
+    otherwise yield zero common images and a spurious alignment failure."""
     for image in rec.images.values():
-        image.name = Path(image.name).name
+        image.name = Path(image.name).stem
 
 
 def evaluate(gt: pycolmap.Reconstruction, rec_path: Path) -> None:
