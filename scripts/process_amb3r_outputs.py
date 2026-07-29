@@ -53,7 +53,7 @@ def main():
 
     n_saved = 0
     for i in range(T):
-        stem = names[i]
+        stem = Path(names[i].name).stem()
         Image.fromarray(imgs_u8[i]).save(out / 'images' / f'{stem}.png')
         if i in unmapped:
             continue                             # image saved (COLMAP can use it); no bundle
