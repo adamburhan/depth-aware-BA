@@ -5,7 +5,7 @@
 #SBATCH --job-name=snpp_amb3r_3dgs
 #SBATCH --output=/network/scratch/a/adam.burhan/logs/snpp_3DGS_amb3r_%A_%a.out
 #SBATCH --gres=gpu:l40s:1
-#SBATCH --array=0-62%8
+#SBATCH --array=0-1
 
 set -euo pipefail
 
