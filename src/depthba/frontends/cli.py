@@ -27,4 +27,6 @@ def main_db() -> None:
     elif args.sequence is not None:
         parser.error("--sequence given but config image_path has no {sequence} placeholder")
 
+    config.camera.resolve(args.data_root, args.sequence)
+
     run_db(config, args.data_root, args.output_dir, args.vocab_tree_path)

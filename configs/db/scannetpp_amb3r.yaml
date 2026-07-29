@@ -1,8 +1,8 @@
-image_path: "{sequence}/images"
+image_path: "{sequence}/dslr/images"
 stride: 1
 camera:
   model: PINHOLE
-  params: [398.7, 399.6, 258.6, 196.0]  
+  params_path: "{sequence}/dslr/intrinsics.json"  
   single_camera: true
 matching:
   method: exhaustive     # video: consecutive-frame pairing

@@ -18,7 +18,7 @@ seq=${sequences[$SLURM_ARRAY_TASK_ID]}
 repo_root=/home/mila/a/adam.burhan/repos/depth-aware-BA
 
 data_root=$SCRATCH/datasets/scannetpp/data/amb3r
-output_dir=$SCRATCH/experiments/depth-aware-ba/scannetpp_amb3r/$seq
+output_dir=$SCRATCH/experiments/depth-aware-ba/scannetpp_amb3r/$seq/dslr
 
 mkdir -p $output_dir
 

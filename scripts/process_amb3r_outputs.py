@@ -22,6 +22,16 @@ def main():
     conf, sky = d['conf'], d['sky_mask']         # (T,H,W)  conf = sig scale [0,1)
     imgs = d['images']                           # (T,3,H,W) in [-1,1], RGB
     unmapped = set(d['unmapped_frames'].tolist())
+    intrinsics = d['intrinsics']                       # (3,3) K
+    # save to intrinsics.json with keys 'fx', 'fy', 'cx', 'cy'
+    with open(out / 'intrinsics.json', 'w') as f:
+        import json
+        json.dump({
+            "fx": intrinsics[0, 0],
+            "fy": intrinsics[1, 1],
+            "cx": intrinsics[0, 2],
+            "cy": intrinsics[1, 2]
+        }, f, indent=2)
     T = pts.shape[0]
     
     assert len(names) == T, f"{len(names)} images vs {T} npz frames"

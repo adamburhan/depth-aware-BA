@@ -8,9 +8,31 @@ import yaml
 @dataclass
 class CameraConfig:
     single_camera: bool = True
-    # manual-only fields:
-    model: str | None = None                    # "PINHOLE", ...
-    params: list[float] | None = None           # fx, fy, cx, cy
+    model: str | None = None
+    params: list[float] | None = None
+    params_path: str | None = None   # relative to data_root, may contain "{sequence}"
+
+    def __post_init__(self) -> None:
+        if self.params is not None and self.params_path is not None:
+            raise ValueError("camera: specify either params or params_path, not both")
+
+    def resolve(self, data_root: Path, sequence: str | None) -> None:
+        """Fill in `params` from `params_path`. No-op if params_path unset."""
+        if self.params_path is None:
+            return
+        path_str = self.params_path
+        if "{sequence}" in path_str:
+            if sequence is None:
+                raise ValueError(f"camera params_path {path_str!r} requires a sequence")
+            path_str = path_str.format(sequence=sequence)
+        full_path = data_root / path_str
+        if not full_path.exists():
+            raise ValueError(f"Camera params_path {full_path} does not exist")
+        import json
+        with open(full_path, "r") as f:
+            intrinsics = json.load(f)
+        self.params = [intrinsics["fx"], intrinsics["fy"], intrinsics["cx"], intrinsics["cy"]]
+        self.params_path = None  # mark resolved
 
 
 @dataclass
@@ -69,8 +91,15 @@ class DBConfig:
         unknown = set(raw) - {f.name for f in dataclasses.fields(cls)}
         if unknown:
             raise ValueError(f"Unknown config keys {unknown} in {path} — typo?")
+
+        camera_fields = raw.pop("camera", {})
+        known_camera = {f.name for f in dataclasses.fields(CameraConfig)}
+        unknown_camera = set(camera_fields) - known_camera
+        if unknown_camera:
+            raise ValueError(f"Unknown camera config keys {unknown_camera} in {path} — typo?")
+
         return cls(
-            camera=CameraConfig(**raw.pop("camera")),
+            camera=CameraConfig(**camera_fields),
             matching=MatchingConfig(**raw.pop("matching", {})),
             sift=SiftConfig(**raw.pop("sift", {})),
             **raw,
