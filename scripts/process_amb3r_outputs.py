@@ -11,7 +11,7 @@ def main():
     ap.add_argument('--rgb_dir', required=True)
     args = ap.parse_args()
     
-    names = sorted(p.stem for p in Path(args.rgb_dir).glob('*.jpg'))
+    names = sorted(p for p in Path(args.rgb_dir).iterdir() if p.suffix.lower() == ".jpg")
 
     out = Path(args.out)
     (out / 'depth_bundles').mkdir(parents=True, exist_ok=True)
