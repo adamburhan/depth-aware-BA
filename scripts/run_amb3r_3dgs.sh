@@ -3,9 +3,9 @@
 #SBATCH --mem=32G
 #SBATCH --time=4:00:00
 #SBATCH --job-name=snpp_amb3r_3dgs
-#SBATCH --output=/network/scratch/a/adam.burhan/logs/snpp_3DGS_amb3r_%A_%a.out
+#SBATCH --output=/network/scratch/a/adam.burhan/logs/snpp_3DGS_amb3r/%A_%a.out
 #SBATCH --gres=gpu:l40s:1
-#SBATCH --array=0-1
+#SBATCH --array=0-62%8
 
 set -euo pipefail
 
@@ -55,5 +55,9 @@ mkdir -p $out_root
 cd $repo_root
 python train.py -s $data_root/${seq}_${mode} -m $out \
     --eval -r 1 --save_iterations 7000 30000 --test_iterations 7000 30000 --quiet --disable_viewer
-python render.py -m $out --iteration 7000 30000 --skip_train
+# render.py --iteration takes ONE value (unlike train.py's --save_iterations),
+# so loop; metrics.py then scores every test/ours_<iter> dir it finds.
+for it in 7000 30000; do
+    python render.py -m $out --iteration $it --skip_train
+done
 python metrics.py -m $out
