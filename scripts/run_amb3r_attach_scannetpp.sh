@@ -2,9 +2,9 @@
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=16G
 #SBATCH --time=4:00:00
-#SBATCH --array=0-0
+#SBATCH --array=0-18
 #SBATCH --job-name=scannetpp_amb3r_attach
-#SBATCH --output=/network/scratch/a/adam.burhan/logs/scannetpp_attach_amb3r_%A_%a.out
+#SBATCH --output=/network/scratch/a/adam.burhan/logs/scannetpp_attach_amb3r/%A_%a.out
 
 set -euo pipefail
 
@@ -14,6 +14,14 @@ modes=(
 )
 sequences=(
     09c1414f1b
+    0d2ee665be
+    13c3e046d7
+    1ada7a0617
+    21d970d8de
+    25f3b7a318
+    27dd4da69e
+    286b55a2bf
+    31a2c91c43
 )
 
 for mode in "${modes[@]}"; do

@@ -27,10 +27,10 @@ def main():
     with open(out / 'intrinsics.json', 'w') as f:
         import json
         json.dump({
-            "fx": intrinsics[0, 0],
-            "fy": intrinsics[1, 1],
-            "cx": intrinsics[0, 2],
-            "cy": intrinsics[1, 2]
+            "fx": float(intrinsics[0, 0]),
+            "fy": float(intrinsics[1, 1]),
+            "cx": float(intrinsics[0, 2]),
+            "cy": float(intrinsics[1, 2]),
         }, f, indent=2)
     T = pts.shape[0]
     
