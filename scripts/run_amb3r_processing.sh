@@ -3,6 +3,8 @@
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=16G
 #SBATCH --array=0-8
+#SBATCH --job-name=process_amb3r
+#SBATCH --output=/network/scratch/a/adam.burhan/logs/process_amb3_snpp/%A_%a.out
 
 # sequences=(
 # 	Caterpillar
