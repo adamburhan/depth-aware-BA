@@ -32,6 +32,8 @@ class CameraConfig:
         with open(full_path, "r") as f:
             intrinsics = json.load(f)
         self.params = [intrinsics["fx"], intrinsics["fy"], intrinsics["cx"], intrinsics["cy"]]
+        if self.params:
+            print(f"Intrinsics loaded from {full_path}: {self.params}")
         self.params_path = None  # mark resolved
 
 
