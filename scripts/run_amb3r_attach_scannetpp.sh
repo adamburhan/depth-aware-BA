@@ -2,7 +2,7 @@
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=16G
 #SBATCH --time=4:00:00
-#SBATCH --array=0-18
+#SBATCH --array=0-8
 #SBATCH --job-name=scannetpp_amb3r_attach
 #SBATCH --output=/network/scratch/a/adam.burhan/logs/scannetpp_attach_amb3r/%A_%a.out
 
@@ -29,9 +29,9 @@ for mode in "${modes[@]}"; do
     repo_root=$HOME/repos/depth-aware-BA/
     cd $repo_root
 
-    db=$SCRATCH/experiments/depth-aware-ba/scannetpp_amb3r/$seq/database.db
+    db=$SCRATCH/experiments/depth-aware-ba/scannetpp_amb3r/$seq/dslr/database.db
     config=${repo_root}/configs/depth/${mode}.yaml
-    dump_dir=$SCRATCH/datasets/scannetpp/data/amb3r/$seq/depth_bundles
+    dump_dir=$SCRATCH/datasets/scannetpp/data/amb3r/$seq/dslr/depth_bundles
     
     uv run depthba-attach \
         --config $config \
