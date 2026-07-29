@@ -22,6 +22,8 @@ import numpy as np
 
 import pycolmap
 
+from depthba.eval.alignment import umeyama_sim3
+
 
 def read_tnt_log(path: Path) -> list[np.ndarray]:
     lines = [l for l in Path(path).read_text().splitlines() if l.strip()]
@@ -51,21 +53,6 @@ def pose_auc(errors: np.ndarray, thresholds: list[float]) -> list[float]:
         r = np.concatenate([recall[:idx], [recall[idx - 1] if idx > 0 else 0.0]])
         aucs.append(float(np.trapezoid(r, e) / t))
     return aucs
-
-
-def umeyama_sim3(src: np.ndarray, dst: np.ndarray):
-    """dst ~ s * R @ src + t (Umeyama 1991, with scale)."""
-    mu_src, mu_dst = src.mean(axis=0), dst.mean(axis=0)
-    x_src, x_dst = src - mu_src, dst - mu_dst
-    cov = x_dst.T @ x_src / len(src)
-    U, D, Vt = np.linalg.svd(cov)
-    S = np.eye(3)
-    if np.linalg.det(U) * np.linalg.det(Vt) < 0:
-        S[2, 2] = -1.0
-    R = U @ S @ Vt
-    scale = np.trace(np.diag(D) @ S) / (x_src**2).sum() * len(src)
-    t = mu_dst - scale * R @ mu_src
-    return scale, R, t
 
 
 def main() -> None:
