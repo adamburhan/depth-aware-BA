@@ -54,7 +54,7 @@ class SiftConfig:
 @dataclass
 class AttachConfig:
     """Sensor identity for one attach_depths ingest. Machine-specific inputs
-    (database path, dump dir, --force) stay on the CLI, like DBConfig."""
+    (database path, dump dir, force) stay in run.py's top-level config."""
 
     sensor: str                     # row key in depthba_depth_meta, e.g. "mda_native_k4"
     method: str                     # key into extractors.EXTRACTORS
@@ -67,11 +67,6 @@ class AttachConfig:
         if unknown:
             raise ValueError(f"Unknown config keys {unknown} in {source} — typo?")
         return cls(**raw)
-
-    @classmethod
-    def load(cls, path: Path) -> "AttachConfig":
-        raw = yaml.safe_load(path.read_text())
-        return cls.from_dict(raw, source=str(path))
 
 
 @dataclass
@@ -110,11 +105,6 @@ class DBConfig:
             sift=SiftConfig(**raw.pop("sift", {})),
             **raw,
         )
-
-    @classmethod
-    def load(cls, path: Path) -> "DBConfig":
-        raw = yaml.safe_load(path.read_text())
-        return cls.from_dict(raw, source=str(path))
         
         
 @dataclass
