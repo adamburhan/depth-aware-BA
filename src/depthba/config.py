@@ -62,12 +62,16 @@ class AttachConfig:
     method_params: dict = field(default_factory=dict)
 
     @classmethod
-    def load(cls, path: Path) -> "AttachConfig":
-        raw = yaml.safe_load(path.read_text())
+    def from_dict(cls, raw: dict, source: str = "<dict>") -> "AttachConfig":
         unknown = set(raw) - {f.name for f in dataclasses.fields(cls)}
         if unknown:
-            raise ValueError(f"Unknown config keys {unknown} in {path} — typo?")
+            raise ValueError(f"Unknown config keys {unknown} in {source} — typo?")
         return cls(**raw)
+
+    @classmethod
+    def load(cls, path: Path) -> "AttachConfig":
+        raw = yaml.safe_load(path.read_text())
+        return cls.from_dict(raw, source=str(path))
 
 
 @dataclass
@@ -88,17 +92,17 @@ class DBConfig:
             )
 
     @classmethod
-    def load(cls, path: Path) -> "DBConfig":
-        raw = yaml.safe_load(path.read_text())
+    def from_dict(cls, raw: dict, source: str = "<dict>") -> "DBConfig":
+        raw = dict(raw)
         unknown = set(raw) - {f.name for f in dataclasses.fields(cls)}
         if unknown:
-            raise ValueError(f"Unknown config keys {unknown} in {path} — typo?")
+            raise ValueError(f"Unknown config keys {unknown} in {source} — typo?")
 
         camera_fields = raw.pop("camera", {})
         known_camera = {f.name for f in dataclasses.fields(CameraConfig)}
         unknown_camera = set(camera_fields) - known_camera
         if unknown_camera:
-            raise ValueError(f"Unknown camera config keys {unknown_camera} in {path} — typo?")
+            raise ValueError(f"Unknown camera config keys {unknown_camera} in {source} — typo?")
 
         return cls(
             camera=CameraConfig(**camera_fields),
@@ -106,6 +110,11 @@ class DBConfig:
             sift=SiftConfig(**raw.pop("sift", {})),
             **raw,
         )
+
+    @classmethod
+    def load(cls, path: Path) -> "DBConfig":
+        raw = yaml.safe_load(path.read_text())
+        return cls.from_dict(raw, source=str(path))
         
         
 @dataclass
@@ -162,9 +171,13 @@ class DepthBAConfig:
                 raise ValueError(f"{name} must be > 0 or null, got {value}")
 
     @classmethod
-    def load(cls, path: Path) -> "DepthBAConfig":
-        raw = yaml.safe_load(path.read_text())
+    def from_dict(cls, raw: dict, source: str = "<dict>") -> "DepthBAConfig":
         unknown = set(raw) - {f.name for f in dataclasses.fields(cls)}
         if unknown:
-            raise ValueError(f"Unknown config keys {unknown} in {path} — typo?")
+            raise ValueError(f"Unknown config keys {unknown} in {source} — typo?")
         return cls(**raw)
+
+    @classmethod
+    def load(cls, path: Path) -> "DepthBAConfig":
+        raw = yaml.safe_load(path.read_text())
+        return cls.from_dict(raw, source=str(path))

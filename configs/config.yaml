@@ -1,0 +1,16 @@
+defaults:
+  - db: eth3d_courtyard
+  - depth_extract: bimodal
+  - experiment: null
+  - _self_
+
+stages: [db, attach]
+
+# Machine/run-specific — set via an experiment preset or CLI overrides
+# (data_root=... sequence=... etc.).
+data_root: ???
+output_dir: ???
+sequence: null
+dump_dir: ???
+vocab_tree_path: null
+force: false   # re-run the selected stages even if their done markers exist

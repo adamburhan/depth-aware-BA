@@ -1,0 +1,8 @@
+# CPU-only jobs (db, attach): pycolmap wheel has no CUDA; colmap_runner
+# caps COLMAP threads via SLURM_CPUS_PER_TASK.
+defaults:
+  - submitit_slurm
+
+timeout_min: 360
+cpus_per_task: 16
+mem_gb: 32
