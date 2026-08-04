@@ -2,6 +2,7 @@ defaults:
   - preprocess: amb3r
   - db: eth3d_courtyard
   - depth_extract: bimodal
+  - depthba: baseline
   - experiment: null
   - _self_
 

@@ -1,10 +1,14 @@
-"""Known-answer tests for LogDepthErrorMaxMix (fork wheel behavior check).
+"""Known-answer + randomized parity tests for the fork's depth factors.
 
 The selection score is whitened_k^2 + 2*log(sigma_k / w_k) — per-mode sigma
 normalizer in the selection only, winning mode's plain whitened error as the
 residual (confirmed from bindings.h source; these tests pin the shipped wheel
 to that spec). Selection flips exactly where
     delta whitened^2 = 2*log(sigma_B * w_A / (sigma_A * w_B)).
+
+The helpers under test are depthba.backends.residuals — the SAME functions
+the MAD robust-scale estimate is computed from, so this file is what stops
+that estimate being fitted to a formula the solver doesn't actually use.
 
 Linux-only (macOS cannot co-import; these tests need only pyceres anyway,
 but skip uniformly where the fork wheel is absent).
@@ -15,18 +19,17 @@ import pytest
 
 pyceres = pytest.importorskip("pyceres")
 
+from depthba.backends.residuals import maxmix_scores, whitened_residuals  # noqa: E402
+
 POSE7_IDENTITY = np.array([0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0])  # [quat xyzw | t]
 
 
-def maxmix_cost(z, modes, sigmas, weights, alpha=1.0, beta=0.0):
-    """0.5 * whitened_winner^2, via a 0-iteration solve at a synthetic state
+def _solve_initial_cost(cost, z, alpha, beta):
+    """0.5 * whitened^2, via a 0-iteration solve at a synthetic state
     (identity pose, point at [0, 0, z] -> z_cam = z)."""
     problem = pyceres.Problem()
-    cost = pyceres.factors.LogDepthErrorMaxMix(
-        np.asarray(modes, float), np.asarray(sigmas, float), np.asarray(weights, float)
-    )
     blocks = [POSE7_IDENTITY.copy(), np.array([0.0, 0.0, float(z)]),
-              np.array([alpha]), np.array([beta])]
+              np.array([float(alpha)]), np.array([float(beta)])]
     problem.add_residual_block(cost, None, blocks)
     options = pyceres.SolverOptions()
     options.max_num_iterations = 0
@@ -35,12 +38,25 @@ def maxmix_cost(z, modes, sigmas, weights, alpha=1.0, beta=0.0):
     return summary.initial_cost
 
 
+def maxmix_cost(z, modes, sigmas, weights, alpha=1.0, beta=0.0):
+    cost = pyceres.factors.LogDepthErrorMaxMix(
+        np.asarray(modes, float), np.asarray(sigmas, float), np.asarray(weights, float)
+    )
+    return _solve_initial_cost(cost, z, alpha, beta)
+
+
+def plain_cost(z, mu, sigma, alpha=1.0, beta=0.0):
+    """K=1 path: make_cost uses LogDepthError, not the MaxMix factor."""
+    cost = pyceres.factors.LogDepthError(float(mu), float(sigma))
+    return _solve_initial_cost(cost, z, alpha, beta)
+
+
 def whitened(z, mu, sigma, alpha=1.0, beta=0.0):
-    return (np.log(z) - np.log(alpha * mu + beta)) / sigma
+    return whitened_residuals(z, mu, sigma, alpha, beta)
 
 
 def score(z, mu, sigma, w):
-    return whitened(z, mu, sigma) ** 2 + 2.0 * np.log(sigma / w)
+    return maxmix_scores(whitened(z, mu, sigma), sigma, w)
 
 
 def test_zero_residual_at_winning_mode():
@@ -91,6 +107,46 @@ def test_affine_transform_slots():
     each parameter alone can zero the residual — pins the alpha/beta slots."""
     assert maxmix_cost(3.0, [2.0], [0.1], [1.0], alpha=1.5, beta=0.0) < 1e-20
     assert maxmix_cost(3.0, [2.0], [0.1], [1.0], alpha=1.0, beta=1.0) < 1e-20
+
+
+def _draw(rng, K):
+    return dict(
+        z=rng.uniform(0.5, 20.0),
+        modes=rng.uniform(0.5, 20.0, K),
+        sigmas=rng.uniform(0.02, 0.5, K),
+        weights=rng.uniform(0.05, 1.0, K),
+        alpha=rng.uniform(0.5, 2.0),
+    )
+
+
+@pytest.mark.parametrize("K", [2, 3, 4])
+def test_maxmix_parity_random(K):
+    """residuals.py must reproduce the wheel's cost on random inputs — this
+    is what the MAD estimate depends on."""
+    rng = np.random.default_rng(0)
+    winners = []
+    for _ in range(200):
+        d = _draw(rng, K)
+        r = whitened_residuals(d["z"], d["modes"], d["sigmas"], d["alpha"])
+        k = int(np.argmin(maxmix_scores(r, d["sigmas"], d["weights"])))
+        winners.append(k)
+        assert maxmix_cost(
+            d["z"], d["modes"], d["sigmas"], d["weights"], alpha=d["alpha"]
+        ) == pytest.approx(0.5 * r[k] ** 2, rel=1e-9, abs=1e-12)
+    # Discriminating power: if mode 0 always won, the argmin would never be
+    # exercised and the test would pass on a broken selection rule.
+    assert len(set(winners)) > 1
+
+
+def test_plain_parity_random():
+    """Same, for the K=1 factor make_cost uses for single-mode rows."""
+    rng = np.random.default_rng(1)
+    for _ in range(200):
+        d = _draw(rng, 1)
+        r = whitened_residuals(d["z"], d["modes"], d["sigmas"], d["alpha"])
+        assert plain_cost(
+            d["z"], d["modes"][0], d["sigmas"][0], alpha=d["alpha"]
+        ) == pytest.approx(0.5 * r[0] ** 2, rel=1e-9, abs=1e-12)
 
 
 @pytest.mark.xfail(

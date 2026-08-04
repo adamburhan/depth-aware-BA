@@ -482,7 +482,7 @@ def main(
     output_path: Path,
     options: IncrementalPipelineOptions | None = None,
     input_path: Path | None = None,
-    depthba_config: Path | None = None,
+    depthba_config: DepthBAConfig | Path | None = None,
 ) -> dict[int, Reconstruction]:
     if options is None:
         options = IncrementalPipelineOptions()
@@ -495,7 +495,10 @@ def main(
 
     depth_ctx = None
     if depthba_config is not None:
-        depth_config = DepthBAConfig.load(depthba_config)
+        depth_config = (
+            depthba_config if isinstance(depthba_config, DepthBAConfig)
+            else DepthBAConfig.load(Path(depthba_config))
+        )
         depth_ctx = DepthContext.load(depth_config, database_path)
         if depth_config.sensor is not None:
             num_rows = sum(len(r) for r in depth_ctx.rows.values())

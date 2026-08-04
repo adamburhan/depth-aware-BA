@@ -1,0 +1,4 @@
+# Depth-off baseline: stage_ba routes sensor=null through the validated
+# no-depth-context path (bit-identical first global BA vs stock).
+# (Named "baseline" not "off"/"none" — YAML would parse those as bool/null.)
+sensor: null
