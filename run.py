@@ -100,16 +100,19 @@ def stage_attach(cfg: DictConfig) -> None:
     run_attach(config, db_path, Path(cfg.dump_dir), force=cfg.force)
 
 
-def ba_variant() -> str:
+def ba_variant(cfg: DictConfig) -> str:
     """Directory name for the ba condition: the depthba option, plus any
     depthba.* CLI overrides (sweep values) so sweep cells don't collide:
-    depthba=amb3r_gmm_local depthba.sigma=0.05 -> amb3r_gmm_local_sigma0.05"""
+    depthba=amb3r_gmm_local depthba.sigma=0.05 -> amb3r_gmm_local_sigma0.05.
+    exp_id separates repeats of one identical condition."""
     hc = HydraConfig.get()
     name = hc.runtime.choices["depthba"]
     mods = sorted(
         o.removeprefix("depthba.").replace("=", "")
         for o in hc.overrides.task if o.startswith("depthba.")
     )
+    if cfg.exp_id is not None:
+        mods.append(str(cfg.exp_id))
     return "_".join([name, *mods])
 
 
@@ -159,7 +162,7 @@ def stage_dir(stage: str, cfg: DictConfig) -> Path:
     if stage == "preprocess":
         return Path(cfg.data_root) / cfg.preprocess.out_subdir.format(sequence=cfg.sequence)
     if stage == "ba":
-        return Path(cfg.output_dir) / "ba" / ba_variant()
+        return Path(cfg.output_dir) / "ba" / ba_variant(cfg)
     return Path(cfg.output_dir)
 
 

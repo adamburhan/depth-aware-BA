@@ -14,6 +14,7 @@ raw_root: ???      # original dataset tree (preprocess input)
 data_root: ???
 output_dir: ???
 sequence: null
+exp_id: null   # suffix on the ba variant dir; distinguishes repeats of one condition
 dump_dir: ???
 vocab_tree_path: null
 force: false   # re-run the selected stages even if their done markers exist
