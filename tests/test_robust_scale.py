@@ -49,7 +49,8 @@ class _Reconstruction:
         self.points3D = points3D
 
 
-def build(residuals, *, second_mode=None, is_sky=False, triangulated=True, alpha=1.0):
+def build(residuals, *, second_mode=None, is_sky=False, triangulated=True, alpha=1.0,
+          sigma_scale=1.0, stored_sigmas=True):
     """DepthContext whose image 1 carries rows with the given whitened
     residuals. second_mode adds a decoy first mode, with z placed on the
     SECOND mode (so the max-mixture winner is the one that fits)."""
@@ -63,14 +64,16 @@ def build(residuals, *, second_mode=None, is_sky=False, triangulated=True, alpha
             modes=modes,
             weights=np.full(k, 1.0 / k),
             estimated_depth=MU,
-            sigmas=np.full(k, SIGMA),
+            sigmas=np.full(k, SIGMA) if stored_sigmas else None,
             confidence=None,
             is_sky=is_sky,
         )
         points3D[i] = _Point3D(z)
         points2D.append(_Point2D(i if triangulated else None))
 
-    ctx = DepthContext(DepthBAConfig(sensor="s", sigma=SIGMA), rows={1: rows})
+    ctx = DepthContext(
+        DepthBAConfig(sensor="s", sigma=SIGMA, sigma_scale=sigma_scale), rows={1: rows}
+    )
     ctx.affine(1, alpha)
     return ctx, _Reconstruction({1: _Image(points2D)}, points3D)
 
@@ -129,6 +132,14 @@ def test_sampling_is_capped_and_deterministic():
     assert len(first) <= 100
     assert np.array_equal(first, ctx._sampled_residuals(rec, [1], 100))
     assert len(ctx._sampled_residuals(rec, [1], 20_000)) == 5000
+
+
+@pytest.mark.parametrize("stored_sigmas", [True, False])
+def test_sigma_scale_applies_to_both_sensor_kinds(stored_sigmas):
+    """One sweep axis with the same meaning whether the sensor stored its own
+    sigmas (gmm) or falls back to the config constant (unimodal)."""
+    ctx, rec = build(np.full(500, 2.0), sigma_scale=2.0, stored_sigmas=stored_sigmas)
+    assert np.allclose(ctx._sampled_residuals(rec, [1], 20_000), 1.0)
 
 
 def test_alpha_is_applied():

@@ -70,6 +70,23 @@ class PreprocessConfig:
 
 
 @dataclass
+class GSConfig:
+    """3DGS training in the gaussian-splatting repo's own venv."""
+
+    repo: str                       # gaussian-splatting checkout
+    python_bin: str                 # interpreter of that repo's venv
+    iterations: list[int] = field(default_factory=lambda: [7000, 30000])
+    resolution: int = 1
+
+    @classmethod
+    def from_dict(cls, raw: dict, source: str = "<dict>") -> "GSConfig":
+        unknown = set(raw) - {f.name for f in dataclasses.fields(cls)}
+        if unknown:
+            raise ValueError(f"Unknown config keys {unknown} in {source} — typo?")
+        return cls(**raw)
+
+
+@dataclass
 class AttachConfig:
     """Sensor identity for one attach_depths ingest. Machine-specific inputs
     (database path, dump dir, force) stay in run.py's top-level config."""
@@ -147,6 +164,10 @@ class DepthBAConfig:
     depth_in_global: bool = True
     depth_in_local: bool = False         # joins as SECOND condition, with diagnostics
     sigma: float = 0.15                  # residual-space stddev for sensors without sigmas
+    sigma_scale: float = 1.0             # multiplies the effective sigma whatever its
+                                         # source (stored per-mode sigmas OR the constant
+                                         # above), so one sweep axis means the same thing
+                                         # on sigma-carrying and sigma-less sensors
     huber_scale: float | None = None     # Huber transition on depth factors, in whitened
                                          # sigmas; None = quadratic. Motivated by the
                                          # heavy-tailed z/mu residuals (bulk ~4%, std 6x
@@ -174,6 +195,8 @@ class DepthBAConfig:
             raise ValueError(f"alpha_init must be median/unit, got {self.alpha_init!r}")
         if self.sigma <= 0:
             raise ValueError(f"sigma must be > 0, got {self.sigma}")
+        if self.sigma_scale <= 0:
+            raise ValueError(f"sigma_scale must be > 0, got {self.sigma_scale}")
         if self.huber_scale is not None and self.huber_scale <= 0:
             raise ValueError(f"huber_scale must be > 0 or null, got {self.huber_scale}")
         if self.huber_adaptive and self.huber_scale is None:

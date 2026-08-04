@@ -1,0 +1,4 @@
+repo: ${oc.env:HOME}/repos/gaussian-splatting
+python_bin: ${oc.env:SCRATCH}/envs/gs3d/bin/python
+iterations: [7000, 30000]
+resolution: 1

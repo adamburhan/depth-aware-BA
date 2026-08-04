@@ -33,7 +33,13 @@ import hydra
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig, OmegaConf
 
-from depthba.config import AttachConfig, DBConfig, DepthBAConfig, PreprocessConfig
+from depthba.config import (
+    AttachConfig,
+    DBConfig,
+    DepthBAConfig,
+    GSConfig,
+    PreprocessConfig,
+)
 from depthba.depth.attach_depths import run as run_attach
 from depthba.frontends.colmap_runner import run_db
 from depthba.preprocess import unpack_amb3r
@@ -133,10 +139,44 @@ def stage_ba(cfg: DictConfig) -> None:
     )
 
 
+def _symlink(target: Path, link: Path) -> None:
+    if link.is_symlink() or link.exists():
+        link.unlink()
+    link.symlink_to(target)
+
+
 def stage_gs(cfg: DictConfig) -> None:
-    # 3DGS training on the BA output (absorbs scripts/build_3dgs_data_snpp.sh
-    # + run_amb3r_3dgs.sh)
-    raise NotImplementedError("gs stage not built yet")
+    config = GSConfig.from_dict(
+        OmegaConf.to_container(cfg.gs, resolve=True), source="cfg.gs"
+    )
+    ba_dir = stage_dir("ba", cfg)
+    # A fragmented reconstruction trains only sub-model 0, which silently makes
+    # this arm incomparable to the others — fail instead.
+    submodels = [p for p in ba_dir.iterdir() if p.is_dir() and p.name.isdigit()]
+    if len(submodels) != 1:
+        raise ValueError(
+            f"{ba_dir}: {len(submodels)} sub-models, expected 1 (arm not comparable)"
+        )
+
+    out_dir = stage_dir("gs", cfg)
+    source = out_dir / "source"
+    (source / "sparse" / "0").mkdir(parents=True, exist_ok=True)
+    _symlink(stage_dir("preprocess", cfg) / "images", source / "images")
+    for name in ("cameras", "images", "points3D"):
+        _symlink(submodels[0] / f"{name}.bin", source / "sparse" / "0" / f"{name}.bin")
+
+    iterations = [str(i) for i in config.iterations]
+    run = lambda args: subprocess.run(  # noqa: E731
+        [config.python_bin, *args], cwd=config.repo, check=True
+    )
+    run(["train.py", "-s", str(source), "-m", str(out_dir), "--eval",
+         "-r", str(config.resolution), "--quiet", "--disable_viewer",
+         "--save_iterations", *iterations, "--test_iterations", *iterations])
+    # render.py --iteration takes ONE value (unlike train.py's --save_iterations),
+    # so loop; metrics.py then scores every test/ours_<iter> dir it finds.
+    for it in iterations:
+        run(["render.py", "-m", str(out_dir), "--iteration", it, "--skip_train"])
+    run(["metrics.py", "-m", str(out_dir)])
 
 
 def stage_eval(cfg: DictConfig) -> None:
@@ -157,12 +197,15 @@ STAGES = {
 
 def stage_dir(stage: str, cfg: DictConfig) -> Path:
     """Where a stage's outputs and done marker live. preprocess writes into
-    the canonical dataset tree; ba gets a per-variant subdir (sigma/huber
-    sweeps must not collide); everything else goes under output_dir."""
+    the canonical dataset tree; ba gets a per-variant subdir (sweep cells must
+    not collide) and gs a per-repeat one under it; everything else goes under
+    output_dir."""
     if stage == "preprocess":
         return Path(cfg.data_root) / cfg.preprocess.out_subdir.format(sequence=cfg.sequence)
     if stage == "ba":
         return Path(cfg.output_dir) / "ba" / ba_variant(cfg)
+    if stage == "gs":
+        return stage_dir("ba", cfg) / f"gs_repeat{cfg.gs_repeat}"
     return Path(cfg.output_dir)
 
 

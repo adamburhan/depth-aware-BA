@@ -1,0 +1,11 @@
+# 3DGS training. Resources match the previous run_amb3r_3dgs.sh.
+defaults:
+  - submitit_slurm
+
+timeout_min: 240
+cpus_per_task: 6
+mem_gb: 32
+gres: gpu:l40s:1
+array_parallelism: 8
+setup:
+  - module load cuda/12.1.1

@@ -3,6 +3,7 @@ defaults:
   - db: eth3d_courtyard
   - depth_extract: bimodal
   - depthba: baseline
+  - gs: default
   - experiment: null
   - _self_
 
@@ -15,6 +16,8 @@ data_root: ???
 output_dir: ???
 sequence: null
 exp_id: null   # suffix on the ba variant dir; distinguishes repeats of one condition
+gs_repeat: 0   # 3DGS repeat index: training is stochastic (densification order,
+               # CUDA atomics), so arms are compared over several repeats
 dump_dir: ???
 vocab_tree_path: null
 force: false   # re-run the selected stages even if their done markers exist

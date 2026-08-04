@@ -5,10 +5,7 @@ alpha/beta affine blocks that survive across BA calls.
 
 Kept separate from the problem builder: everything here is depth-domain
 logic (which factor class, which sigma, warm starts); the builder only
-walks it. pyceres is imported lazily inside make_cost — everything else
-here (row cache, affine blocks, robust-scale fit) is plain numpy, and
-keeping it importable without the Linux-only fork wheel is what lets those
-parts be tested off-cluster.
+walks it. 
 """
 
 import sqlite3
@@ -112,12 +109,22 @@ class DepthContext:
         for alpha in self.alphas.values():
             alpha *= scale
 
+    def row_sigmas(self, row) -> np.ndarray:
+        """Effective per-mode sigmas: the sensor's own where it stored them,
+        else the config constant, times sigma_scale. Single source of truth —
+        the factor and the MAD fit must whiten identically."""
+        cfg = self.config
+        sigmas = (
+            row.sigmas if row.sigmas is not None
+            else np.full(len(row.modes), cfg.sigma)
+        )
+        return np.asarray(sigmas, dtype=np.float64) * cfg.sigma_scale
+
     def _sampled_residuals(self, reconstruction, image_ids, max_samples) -> np.ndarray:
         """Whitened depth residuals at the CURRENT state, one per sampled
         factor, taking each row's max-mixture winner — a keypoint sitting
         correctly on its second mode must read as a small residual, not
         inflate the scale estimate it is then judged against."""
-        cfg = self.config
         ids = [i for i in sorted(image_ids) if self.rows.get(i) and self.has_affine(i)]
         if not ids:
             return np.empty(0)  # nothing has an alpha yet: first global BA
@@ -146,10 +153,7 @@ class DepthContext:
                 z = (cam_from_world * reconstruction.points3D[p2d.point3D_id].xyz)[2]
                 if z <= 0:
                     continue
-                sigmas = (
-                    row.sigmas if row.sigmas is not None
-                    else np.full(len(row.modes), cfg.sigma)
-                )
+                sigmas = self.row_sigmas(row)
                 r = whitened_residuals(z, row.modes, sigmas, a, b)
                 if len(r) == 1:
                     out.append(r[0])
@@ -184,12 +188,11 @@ class DepthContext:
         num_modes = len(row.modes)
         if num_modes == 1:
             factor = getattr(pyceres.factors, _PLAIN_FACTORS[cfg.depth_space])
-            sigma = float(row.sigmas[0]) if row.sigmas is not None else cfg.sigma
             # modes[0] == estimated_depth for K=1 rows by extractor
             # construction; modes[0] keeps the K=1/K>1 paths consistent.
-            return factor(float(row.modes[0]), sigma)
+            return factor(float(row.modes[0]), float(self.row_sigmas(row)[0]))
         factor = getattr(pyceres.factors, _MAXMIX_FACTORS[cfg.depth_space])
-        sigmas = row.sigmas if row.sigmas is not None else np.full(num_modes, cfg.sigma)
+        sigmas = self.row_sigmas(row)
         # The C++ MaxMix factor requires weights > 0 (it takes their log);
         # ingest allows weight == 0 and float32 storage can underflow a tiny
         # softmax weight to exactly 0. Clamp to a floor far below any real
