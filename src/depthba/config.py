@@ -52,6 +52,24 @@ class SiftConfig:
 
 
 @dataclass
+class PreprocessConfig:
+    """amb3r inference + npz unpack into the canonical tree. raw_root and
+    data_root (the trees these subdirs live under) stay in run.py's
+    top-level config."""
+
+    amb3r_repo: str                 # amb3r checkout with its own .venv
+    image_subdir: str               # under raw_root, "{sequence}" placeholder
+    out_subdir: str                 # under data_root, "{sequence}" placeholder
+
+    @classmethod
+    def from_dict(cls, raw: dict, source: str = "<dict>") -> "PreprocessConfig":
+        unknown = set(raw) - {f.name for f in dataclasses.fields(cls)}
+        if unknown:
+            raise ValueError(f"Unknown config keys {unknown} in {source} — typo?")
+        return cls(**raw)
+
+
+@dataclass
 class AttachConfig:
     """Sensor identity for one attach_depths ingest. Machine-specific inputs
     (database path, dump dir, force) stay in run.py's top-level config."""

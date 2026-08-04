@@ -1,4 +1,5 @@
 defaults:
+  - preprocess: amb3r
   - db: eth3d_courtyard
   - depth_extract: bimodal
   - experiment: null
@@ -8,6 +9,7 @@ stages: [db, attach]
 
 # Machine/run-specific — set via an experiment preset or CLI overrides
 # (data_root=... sequence=... etc.).
+raw_root: ???      # original dataset tree (preprocess input)
 data_root: ???
 output_dir: ???
 sequence: null

@@ -19,6 +19,7 @@ dependencies = [
     "pandas>=3.0.5",
     "hydra-core>=1.3.2",
     "hydra-submitit-launcher>=1.2.0",
+    "pillow>=11",
 ]
 
 # pyceres comes from our fork's release wheels (depth factors; vcpkg snapshot

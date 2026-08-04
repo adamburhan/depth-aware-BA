@@ -1,0 +1,12 @@
+# amb3r preprocess jobs. Resources match the previous preprocess sbatch
+# scripts; cuda module is for amb3r's venv. Other GPU stages (depthgen, gs)
+# get their own launcher files here when built — one small yaml per profile.
+defaults:
+  - submitit_slurm
+
+timeout_min: 300
+cpus_per_task: 4
+mem_gb: 48
+gres: gpu:l40s:1
+setup:
+  - module load cuda/11.8

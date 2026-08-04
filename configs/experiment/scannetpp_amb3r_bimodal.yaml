@@ -1,18 +1,20 @@
 # @package _global_
-# Experiment preset: pins the db/depth_extract options and derives all
-# paths from ${sequence}, so an invocation is just
+# Experiment preset: pins the stage options and derives all paths from
+# ${sequence}. Stages run in per-resource waves, one SLURM job per sequence:
 #
-#   python run.py experiment=scannetpp_amb3r_bimodal sequence=09c1414f1b
+#   python run.py -m hydra/launcher=gpu_amb3r 'stages=[preprocess]' \
+#       experiment=scannetpp_amb3r_bimodal 'sequence=09c1414f1b,0d2ee665be'
+#   python run.py -m hydra/launcher=cpu \
+#       experiment=scannetpp_amb3r_bimodal 'sequence=09c1414f1b,0d2ee665be'
 #
-# or, submitting one SLURM job per sequence:
-#
-#   python run.py -m hydra/launcher=cpu experiment=scannetpp_amb3r_bimodal \
-#       'sequence=09c1414f1b,0d2ee665be,13c3e046d7'
+# (preprocess: amb3r comes from the root defaults; local single-sequence
+# runs drop the -m and hydra/launcher=.)
 
 defaults:
   - override /db: scannetpp_amb3r
   - override /depth_extract: bimodal
 
+raw_root: ${oc.env:SCRATCH}/datasets/scannetpp/data
 data_root: ${oc.env:SCRATCH}/datasets/scannetpp/data/amb3r
 output_dir: ${oc.env:SCRATCH}/experiments/depth-aware-ba/scannetpp_amb3r/${sequence}/dslr
 dump_dir: ${data_root}/${sequence}/dslr/depth_bundles

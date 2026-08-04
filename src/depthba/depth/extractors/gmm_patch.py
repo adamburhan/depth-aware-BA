@@ -71,7 +71,12 @@ def extract(
     r_min = params.get("r_min", 2)
     wmin = params.get("wmin", 0.05)                 # min 2nd-mode weight
     max_iter = params.get("em_iters", 30)
-    uniform_prior = params.get("uniform_prior", True)  # uniform prior on pi's
+    # EM weights are detection-only: they gate whether a genuine 2nd mode
+    # exists (wmin/sep_min below). With uniform_prior the STORED weights are
+    # (0.5, 0.5), so max-mixture mode selection is left to the multiview
+    # residual rather than patch statistics (which mislead at discontinuities,
+    # where keypoints live). 
+    uniform_prior = params.get("uniform_prior", True)
     
     # depth_space = params.get("depth_space", "linear")
     # if depth_space == 'linear':

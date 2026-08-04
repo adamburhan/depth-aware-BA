@@ -1,8 +1,0 @@
-# GPU jobs (future preprocess/depthgen stages: amb3r, depth model inference).
-defaults:
-  - submitit_slurm
-
-timeout_min: 120
-cpus_per_task: 4
-mem_gb: 32
-gres: gpu:1

@@ -1,0 +1,5 @@
+# amb3r inference + npz unpack. Subdirs are the ScanNet++ dslr layout;
+# other datasets override them (T&T would be "{sequence}/images" / "{sequence}").
+amb3r_repo: ${oc.env:HOME}/repos/amb3r
+image_subdir: "{sequence}/dslr/resized_undistorted_images"   # under raw_root
+out_subdir: "{sequence}/dslr"                                # under data_root
