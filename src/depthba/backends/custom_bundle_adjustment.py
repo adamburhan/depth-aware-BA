@@ -390,7 +390,9 @@ def build_problem(
             # Global bundles only: the local ones see mostly young, poorly
             # triangulated points, so their dispersion is not the sensor's.
             scale = depth_ctx.update_robust_scale(reconstruction, ba_config.images)
-            logging.verbose(1, f"=> Depth robust scale (MAD) = {scale:.3f}")
+            # info, not verbose: this fires once per global BA (rare) and is the
+            # only record of what the loss threshold actually became.
+            logging.info(f"=> Depth robust scale (MAD) = {scale:.3f}")
         num_depth = _add_depth_factors(
             problem, blocks, ba_config, reconstruction, depth_ctx
         )
