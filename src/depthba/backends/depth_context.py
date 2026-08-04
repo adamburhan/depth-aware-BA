@@ -5,7 +5,10 @@ alpha/beta affine blocks that survive across BA calls.
 
 Kept separate from the problem builder: everything here is depth-domain
 logic (which factor class, which sigma, warm starts); the builder only
-walks it. Imports pyceres, so Linux-only in practice.
+walks it. pyceres is imported lazily inside make_cost — everything else
+here (row cache, affine blocks, robust-scale fit) is plain numpy, and
+keeping it importable without the Linux-only fork wheel is what lets those
+parts be tested off-cluster.
 """
 
 import sqlite3
@@ -13,8 +16,7 @@ from pathlib import Path
 
 import numpy as np
 
-import pyceres
-
+from depthba.backends.residuals import maxmix_scores, whitened_residuals
 from depthba.config import DepthBAConfig
 from depthba.depth import schema
 
@@ -44,6 +46,10 @@ class DepthContext:
         self.rows = rows if rows is not None else {}  # image_id -> {point2D_idx: KeypointDepth}
         self.alphas: dict[int, np.ndarray] = {}
         self.betas: dict[int, np.ndarray] = {}
+        # Huber multiplier from the last global-BA MAD fit. Persisting it here
+        # is what lets local BAs inherit the global estimate instead of
+        # refitting on their own (young, badly-triangulated) points.
+        self.robust_scale = 1.0
 
     @classmethod
     def load(cls, config: DepthBAConfig, database_path: Path) -> "DepthContext":
@@ -88,7 +94,9 @@ class DepthContext:
     def affine(self, image_id: int, alpha0: float = 1.0):
         """Get-or-create the persistent alpha/beta blocks for an image.
         alpha0 is used only at creation (the image's first BA appearance;
-        under shared_scale, the whole map's first)."""
+        under shared_scale, the whole map's first). beta is created at 0 and
+        held there — the affine is scale-only; the block exists because the
+        fork's factors take it."""
         key = self._affine_key(image_id)
         if key not in self.alphas:
             self.alphas[key] = np.array([float(alpha0)], dtype=np.float64)
@@ -96,16 +104,82 @@ class DepthContext:
         return self.alphas[key], self.betas[key]
 
     def rescale_affine(self, scale: float) -> None:
-        """Keep alpha/beta consistent when reconstruction.normalize() rescales
-        the map: z' = s*z  =>  alpha' = s*alpha, beta' = s*beta. Without this,
-        persistent affine blocks go stale after every normalization (harmless
-        for free alpha/beta, which re-converge, but wrong for frozen ones)."""
+        """Keep alpha consistent when reconstruction.normalize() rescales the
+        map: z' = s*z  =>  alpha' = s*alpha. Without this, persistent alpha
+        blocks go stale after every normalization (harmless for free alpha,
+        which re-converges, but wrong for frozen ones). beta is constant at 0,
+        so it needs no rescaling."""
         for alpha in self.alphas.values():
             alpha *= scale
-        for beta in self.betas.values():
-            beta *= scale
 
-    def make_cost(self, row) -> "pyceres.CostFunction":
+    def _sampled_residuals(self, reconstruction, image_ids, max_samples) -> np.ndarray:
+        """Whitened depth residuals at the CURRENT state, one per sampled
+        factor, taking each row's max-mixture winner — a keypoint sitting
+        correctly on its second mode must read as a small residual, not
+        inflate the scale estimate it is then judged against."""
+        cfg = self.config
+        ids = [i for i in sorted(image_ids) if self.rows.get(i) and self.has_affine(i)]
+        if not ids:
+            return np.empty(0)  # nothing has an alpha yet: first global BA
+        budget = max(1, max_samples // len(ids))
+
+        out = []
+        for image_id in ids:
+            rows = self.rows[image_id]
+            alpha, beta = self.affine(image_id)
+            a, b = float(alpha[0]), float(beta[0])
+            image = reconstruction.images[image_id]
+            cam_from_world = image.cam_from_world
+            if callable(cam_from_world):
+                cam_from_world = cam_from_world()
+            points2D = image.points2D
+            # Fixed stride, spread over the whole image: a prefix would bias
+            # toward one region, and an RNG would cost bit-identical re-runs.
+            # Most keypoints are untriangulated, so this undershoots the
+            # budget — fine, MAD's error falls as 1/sqrt(n).
+            stride = max(1, len(points2D) // budget)
+            for idx in range(0, len(points2D), stride):
+                row = rows.get(idx)
+                p2d = points2D[idx]
+                if row is None or row.is_sky or not p2d.has_point3D():
+                    continue
+                z = (cam_from_world * reconstruction.points3D[p2d.point3D_id].xyz)[2]
+                if z <= 0:
+                    continue
+                sigmas = (
+                    row.sigmas if row.sigmas is not None
+                    else np.full(len(row.modes), cfg.sigma)
+                )
+                r = whitened_residuals(z, row.modes, sigmas, a, b)
+                if len(r) == 1:
+                    out.append(r[0])
+                else:
+                    weights = np.maximum(row.weights.astype(np.float64), 1e-20)
+                    out.append(r[int(np.argmin(maxmix_scores(r, sigmas, weights)))])
+        return np.asarray(out)
+
+    def update_robust_scale(
+        self, reconstruction, image_ids, max_samples: int = 20_000, min_samples: int = 50
+    ) -> float:
+        """Refit the Huber multiplier from the current residual dispersion.
+
+        Called at global BA only; the result is frozen for that solve and
+        inherited by every local BA until the next global one. Too few
+        samples (early map) keeps the previous estimate.
+        """
+        r = self._sampled_residuals(reconstruction, image_ids, max_samples)
+        if len(r) < min_samples:
+            return self.robust_scale
+        sigma = 1.4826 * float(np.median(np.abs(r - np.median(r))))
+        # Floor at 1: the fitted dispersion may only LOOSEN the loss relative
+        # to huber_scale. Tightening below nominal would let a well-behaved
+        # bundle start rejecting its own good depth factors.
+        self.robust_scale = max(sigma, 1.0)
+        return self.robust_scale
+
+    def make_cost(self, row):
+        import pyceres  # lazy: see module docstring
+
         cfg = self.config
         num_modes = len(row.modes)
         if num_modes == 1:

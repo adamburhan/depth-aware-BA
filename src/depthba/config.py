@@ -132,6 +132,11 @@ class DepthBAConfig:
     depthba_depth_meta row — the db is the single source of truth. Factor
     arity follows meta.num_modes (1 -> plain, >1 -> max-mixture).
 
+    The per-image affine is SCALE ONLY: beta stays constant at 0 (the slot
+    survives because the fork's factors take it as a parameter block). A
+    free shift adds no measurable accuracy on our sensors, and mp-sfm pins
+    it to zero for the same reason.
+
     Deliberate omissions: no wmin/gating knobs — later experimental
     conditions, added when the experiment exists. Sky exclusion is
     unconditional by design.
@@ -146,15 +151,18 @@ class DepthBAConfig:
                                          # sigmas; None = quadratic. Motivated by the
                                          # heavy-tailed z/mu residuals (bulk ~4%, std 6x
                                          # the robust spread) measured on tt_amb3r.
+    huber_adaptive: bool = False         # scale the transition by the MAD-fitted
+                                         # dispersion of the current whitened residuals,
+                                         # refit at each global BA and reused by the local
+                                         # ones. Floored at 1.0, so it can only loosen
+                                         # relative to huber_scale, never tighten.
     shared_scale: bool = False           # ONE alpha for the whole map, frozen at the
-                                         # first median snapshot (beta frozen at 0) —
+                                         # first median snapshot —
                                          # for scale-consistent sensors, where
                                          # per-image snapshots would inject scale
                                          # noise the sensor doesn't have
     per_image_scale: bool = True         # alpha block variable (else constant at 1.0)
-    per_image_shift: bool = True         # beta block variable (else constant at 0.0)
     prior_sigma_alpha: float | None = None   # None = no prior (weak default per design)
-    prior_sigma_beta: float | None = None
     alpha_init: Literal["median", "unit"] = "median"
 
     def __post_init__(self) -> None:
@@ -168,15 +176,22 @@ class DepthBAConfig:
             raise ValueError(f"sigma must be > 0, got {self.sigma}")
         if self.huber_scale is not None and self.huber_scale <= 0:
             raise ValueError(f"huber_scale must be > 0 or null, got {self.huber_scale}")
-        if self.shared_scale and (self.per_image_scale or self.per_image_shift):
+        if self.huber_adaptive and self.huber_scale is None:
+            raise ValueError("huber_adaptive needs a huber_scale to scale (got null)")
+        if self.huber_adaptive and self.depth_space != "log":
             raise ValueError(
-                "shared_scale is exclusive with per_image_scale/per_image_shift: "
+                "huber_adaptive is log-space only: the linear/inverse residual "
+                "formulas have no parity coverage against the fork's factors"
+            )
+        if self.shared_scale and self.per_image_scale:
+            raise ValueError(
+                "shared_scale is exclusive with per_image_scale: "
                 "one global alpha replaces the per-image affine blocks"
             )
-        for name in ("prior_sigma_alpha", "prior_sigma_beta"):
-            value = getattr(self, name)
-            if value is not None and value <= 0:
-                raise ValueError(f"{name} must be > 0 or null, got {value}")
+        if self.prior_sigma_alpha is not None and self.prior_sigma_alpha <= 0:
+            raise ValueError(
+                f"prior_sigma_alpha must be > 0 or null, got {self.prior_sigma_alpha}"
+            )
 
     @classmethod
     def from_dict(cls, raw: dict, source: str = "<dict>") -> "DepthBAConfig":

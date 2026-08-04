@@ -274,9 +274,12 @@ def _add_depth_factors(problem, blocks, ba_config, reconstruction, depth_ctx):
     """Phase 5 (ours): depth factors on the SAME pose/point blocks as the
     reprojection residuals, plus per-image alpha/beta with optional priors."""
     cfg = depth_ctx.config
-    depth_loss = (
-        pyceres.HuberLoss(cfg.huber_scale) if cfg.huber_scale is not None else None
-    )
+    huber_scale = cfg.huber_scale
+    if huber_scale is not None and cfg.huber_adaptive:
+        # robust_scale is refit at global BA and carried into the local ones;
+        # constructing the loss here freezes it for the whole solve.
+        huber_scale *= depth_ctx.robust_scale
+    depth_loss = pyceres.HuberLoss(huber_scale) if huber_scale is not None else None
     num_added = 0
     for image_id in sorted(ba_config.images):
         rows = depth_ctx.rows.get(image_id)
@@ -310,13 +313,14 @@ def _add_depth_factors(problem, blocks, ba_config, reconstruction, depth_ctx):
         if num_added == num_before:
             continue  # alpha/beta never entered this problem
 
+        # The affine is scale-only: beta is a constant 0 in every condition.
+        problem.set_parameter_block_constant(beta)
         if cfg.shared_scale:
             # one global alpha frozen at its creation median (tracked through
-            # normalize() rescaling); metric sensor -> no shift. A snapshot
-            # error here is a uniform scale offset shared by all factors --
-            # the map converges at that scale instead of warping.
+            # normalize() rescaling). A snapshot error here is a uniform scale
+            # offset shared by all factors -- the map converges at that scale
+            # instead of warping.
             problem.set_parameter_block_constant(alpha)
-            problem.set_parameter_block_constant(beta)
             continue
         if not cfg.per_image_scale:
             problem.set_parameter_block_constant(alpha)
@@ -324,13 +328,6 @@ def _add_depth_factors(problem, blocks, ba_config, reconstruction, depth_ctx):
             problem.add_residual_block(
                 pyceres.factors.NormalPrior([1.0], [[cfg.prior_sigma_alpha**2]]),
                 None, [alpha],
-            )
-        if not cfg.per_image_shift:
-            problem.set_parameter_block_constant(beta)
-        elif cfg.prior_sigma_beta is not None:
-            problem.add_residual_block(
-                pyceres.factors.NormalPrior([0.0], [[cfg.prior_sigma_beta**2]]),
-                None, [beta],
             )
     return num_added
 
@@ -389,6 +386,11 @@ def build_problem(
 
     # Phase 5: depth factors (ours).
     if depth_ctx is not None and depth_ctx.active(in_global):
+        if in_global and depth_ctx.config.huber_adaptive:
+            # Global bundles only: the local ones see mostly young, poorly
+            # triangulated points, so their dispersion is not the sensor's.
+            scale = depth_ctx.update_robust_scale(reconstruction, ba_config.images)
+            logging.verbose(1, f"=> Depth robust scale (MAD) = {scale:.3f}")
         num_depth = _add_depth_factors(
             problem, blocks, ba_config, reconstruction, depth_ctx
         )

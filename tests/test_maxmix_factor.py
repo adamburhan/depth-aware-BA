@@ -1,17 +1,4 @@
 """Known-answer + randomized parity tests for the fork's depth factors.
-
-The selection score is whitened_k^2 + 2*log(sigma_k / w_k) — per-mode sigma
-normalizer in the selection only, winning mode's plain whitened error as the
-residual (confirmed from bindings.h source; these tests pin the shipped wheel
-to that spec). Selection flips exactly where
-    delta whitened^2 = 2*log(sigma_B * w_A / (sigma_A * w_B)).
-
-The helpers under test are depthba.backends.residuals — the SAME functions
-the MAD robust-scale estimate is computed from, so this file is what stops
-that estimate being fitted to a formula the solver doesn't actually use.
-
-Linux-only (macOS cannot co-import; these tests need only pyceres anyway,
-but skip uniformly where the fork wheel is absent).
 """
 
 import numpy as np

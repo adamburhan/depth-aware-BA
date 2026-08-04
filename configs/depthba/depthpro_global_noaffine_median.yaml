@@ -10,7 +10,5 @@ depth_in_global: true
 depth_in_local: false
 sigma: 0.15
 per_image_scale: false
-per_image_shift: false
 prior_sigma_alpha: null
-prior_sigma_beta: null
 alpha_init: median
