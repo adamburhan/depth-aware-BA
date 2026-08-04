@@ -391,8 +391,13 @@ def build_problem(
             # triangulated points, so their dispersion is not the sensor's.
             scale = depth_ctx.update_robust_scale(reconstruction, ba_config.images)
             # info, not verbose: this fires once per global BA (rare) and is the
-            # only record of what the loss threshold actually became.
-            logging.info(f"=> Depth robust scale (MAD) = {scale:.3f}")
+            # only record of what the loss threshold actually became. The raw
+            # fit is the calibration diagnostic — <1 means the sensor's sigmas
+            # are conservative, and the floor is discarding that information.
+            logging.info(
+                f"=> Depth robust scale (MAD) = {scale:.3f} "
+                f"(raw {depth_ctx.robust_scale_raw:.3f})"
+            )
         num_depth = _add_depth_factors(
             problem, blocks, ba_config, reconstruction, depth_ctx
         )

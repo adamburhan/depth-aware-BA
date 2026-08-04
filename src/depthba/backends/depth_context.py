@@ -47,6 +47,7 @@ class DepthContext:
         # is what lets local BAs inherit the global estimate instead of
         # refitting on their own (young, badly-triangulated) points.
         self.robust_scale = 1.0
+        self.robust_scale_raw = 1.0  # pre-floor fit, diagnostic only
 
     @classmethod
     def load(cls, config: DepthBAConfig, database_path: Path) -> "DepthContext":
@@ -175,6 +176,7 @@ class DepthContext:
         if len(r) < min_samples:
             return self.robust_scale
         sigma = 1.4826 * float(np.median(np.abs(r - np.median(r))))
+        self.robust_scale_raw = sigma
         # Floor at 1: the fitted dispersion may only LOOSEN the loss relative
         # to huber_scale. Tightening below nominal would let a well-behaved
         # bundle start rejecting its own good depth factors.
