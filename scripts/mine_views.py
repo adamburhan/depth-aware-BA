@@ -91,7 +91,6 @@ def main() -> None:
     args = ap.parse_args()
 
     lhs, _, rhs = args.contrast.partition(",")
-    a_name, b_name = f"{lhs}_{args.cell}", f"{rhs}_{args.cell}"
     sequences = args.sequences or sorted(
         p.name for p in args.root.iterdir() if (p / "dslr" / "ba").is_dir()
     )
