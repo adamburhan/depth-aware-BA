@@ -54,12 +54,16 @@ def main() -> None:
     )
 
     cells = collections.defaultdict(
-        lambda: {"pos": [], "rot": [], "dbase": [], "reg": [], "frag": 0}
+        lambda: {"pos": [], "rot": [], "dbase": [], "reg": [], "dreg": [], "frag": []}
     )
     for seq in sequences:
         ba = args.root / seq / "dslr" / "ba"
         gt = load(args.gt_root / seq / "dslr" / "colmap") if args.gt_root else None
-        baseline = load(ba / "baseline" / "0")
+        # baseline may carry an exp_id suffix (baseline_0)
+        base_dirs = sorted(
+            p for p in ba.iterdir() if p.is_dir() and p.name.startswith("baseline")
+        )
+        baseline = load(base_dirs[0] / "0") if base_dirs else None
         for variant in sorted(p.name for p in ba.iterdir() if p.is_dir()):
             subs = sorted(
                 p for p in (ba / variant).iterdir() if p.is_dir() and p.name.isdigit()
@@ -69,8 +73,12 @@ def main() -> None:
                 continue
             cell = cells[variant]
             cell["reg"].append(rec.num_reg_images())
-            cell["frag"] += len(subs) > 1
+            if len(subs) > 1:
+                cell["frag"].append(f"{seq}({len(subs)})")
             if baseline is not None:
+                # registrations relative to this sequence's own baseline —
+                # absolute counts are not comparable across scenes
+                cell["dreg"].append(rec.num_reg_images() - baseline.num_reg_images())
                 pos, _ = errors(rec, baseline)
                 if pos is not None:
                     cell["dbase"].append(np.median(pos))
@@ -80,17 +88,18 @@ def main() -> None:
                     cell["pos"].append(pos)
                     cell["rot"].append(rot)
 
-    print(f"{'condition':<50}{'n':>3}{'reg':>6}{'dbase':>8}"
+    print(f"{'condition':<50}{'n':>3}{'dreg':>6}{'dbase':>8}"
           f"{'pos50':>8}{'pos90':>8}{'rot50':>8}   [mm, deg]")
     for name in sorted(cells):
         cell = cells[name]
         pos = np.concatenate(cell["pos"]) if cell["pos"] else np.array([np.nan])
         rot = np.concatenate(cell["rot"]) if cell["rot"] else np.array([np.nan])
         dbase = np.median(cell["dbase"]) * 1000 if cell["dbase"] else np.nan
-        print(f"{name:<50}{len(cell['reg']):>3}{np.mean(cell['reg']):>6.0f}{dbase:>8.2f}"
+        dreg = np.mean(cell["dreg"]) if cell["dreg"] else np.nan
+        print(f"{name:<50}{len(cell['reg']):>3}{dreg:>6.1f}{dbase:>8.2f}"
               f"{np.median(pos) * 1000:>8.2f}{np.percentile(pos, 90) * 1000:>8.2f}"
               f"{np.median(rot):>8.3f}"
-              + ("   FRAGMENTED" if cell["frag"] else ""))
+              + (f"   FRAGMENTED {','.join(cell['frag'])}" if cell["frag"] else ""))
 
 
 if __name__ == "__main__":
