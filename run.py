@@ -25,11 +25,14 @@ theirs). Invalidate manually by deleting a marker.
 
 import json
 import logging
+import os
+import shutil
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
 import hydra
+import pycolmap
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig, OmegaConf
 
@@ -130,8 +133,19 @@ def stage_ba(cfg: DictConfig) -> None:
     config = DepthBAConfig.from_dict(
         OmegaConf.to_container(cfg.depthba, resolve=True), source="cfg.depthba"
     )
+    database_path = Path(cfg.output_dir) / "database.db"
+    if not database_path.exists():
+        raise FileNotFoundError(f"{database_path} does not exist — run stages=[db,attach]")
+    # ba only reads the db, and NFS SQLite locking collides when sweep cells
+    # on one sequence open it at once: read a node-local copy instead.
+    if (tmpdir := os.environ.get("SLURM_TMPDIR")) is not None:
+        local = Path(tmpdir) / "database.db"
+        if not local.exists():
+            shutil.copy2(database_path, local)
+        database_path = local
+
     run_mapping(
-        database_path=Path(cfg.output_dir) / "database.db",
+        database_path=database_path,
         image_path=stage_dir("preprocess", cfg) / "images",
         output_path=stage_dir("ba", cfg),
         # sensor=null baseline goes through the validated no-depth-ctx path
@@ -150,12 +164,21 @@ def stage_gs(cfg: DictConfig) -> None:
         OmegaConf.to_container(cfg.gs, resolve=True), source="cfg.gs"
     )
     ba_dir = stage_dir("ba", cfg)
-    # A fragmented reconstruction trains only sub-model 0, which silently makes
-    # this arm incomparable to the others — fail instead.
-    submodels = [p for p in ba_dir.iterdir() if p.is_dir() and p.name.isdigit()]
-    if len(submodels) != 1:
-        raise ValueError(
-            f"{ba_dir}: {len(submodels)} sub-models, expected 1 (arm not comparable)"
+    submodels = sorted(p for p in ba_dir.iterdir() if p.is_dir() and p.name.isdigit())
+    if not submodels:
+        raise ValueError(f"{ba_dir}: no sub-models to train on")
+    if len(submodels) == 1:
+        model = submodels[0]
+    else:
+        # Fragmented: train the LARGEST sub-model (COLMAP does not guarantee
+        # that is sub-model 0 — 27dd4da69e splits [93, 94]). Arms that split
+        # differently then cover different image sets, so --eval holds out
+        # different test images: such scenes are not comparable arm-to-arm
+        # without checking the registered sets match.
+        sizes = [pycolmap.Reconstruction(p).num_reg_images() for p in submodels]
+        model = submodels[sizes.index(max(sizes))]
+        log.warning(
+            f"{ba_dir}: {len(submodels)} sub-models {sizes}, training {model.name}"
         )
 
     out_dir = stage_dir("gs", cfg)
@@ -163,7 +186,7 @@ def stage_gs(cfg: DictConfig) -> None:
     (source / "sparse" / "0").mkdir(parents=True, exist_ok=True)
     _symlink(stage_dir("preprocess", cfg) / "images", source / "images")
     for name in ("cameras", "images", "points3D"):
-        _symlink(submodels[0] / f"{name}.bin", source / "sparse" / "0" / f"{name}.bin")
+        _symlink(model / f"{name}.bin", source / "sparse" / "0" / f"{name}.bin")
 
     iterations = [str(i) for i in config.iterations]
     run = lambda args: subprocess.run(  # noqa: E731

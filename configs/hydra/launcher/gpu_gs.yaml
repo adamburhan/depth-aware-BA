@@ -6,6 +6,6 @@ timeout_min: 240
 cpus_per_task: 6
 mem_gb: 32
 gres: gpu:l40s:1
-array_parallelism: 8
+array_parallelism: 16
 setup:
   - module load cuda/12.1.1

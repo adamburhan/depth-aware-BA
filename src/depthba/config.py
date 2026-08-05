@@ -162,40 +162,13 @@ class DepthBAConfig:
     sensor: str | None = None            # row key in depthba_depth_meta; None = depth off
     depth_space: Literal["log", "linear", "inverse"] = "log"
     depth_in_global: bool = True
-    depth_in_local: bool = False         # joins as SECOND condition, with diagnostics
-    sigma: float = 0.15                  # residual-space stddev for sensors without sigmas
-    sigma_scale: float = 1.0             # multiplies the effective sigma whatever its
-                                         # source (stored per-mode sigmas OR the constant
-                                         # above), so one sweep axis means the same thing
-                                         # on sigma-carrying and sigma-less sensors
+    depth_in_local: bool = False         
+    sigma: float = 0.15                
+    sigma_scale: float = 1.0           
     depth_loss: Literal["huber", "cauchy"] = "huber"
-                                         # robust kernel on the depth factors. huber is
-                                         # convex but its influence saturates at a
-                                         # constant, so a coherent block of wrong depths
-                                         # keeps pulling; cauchy redescends to zero
-                                         # influence, which is what mp-sfm uses on this
-                                         # term (their reprojection term stays convex,
-                                         # and so does ours).
-    huber_scale: float | None = 2.0      # transition on depth factors, in whitened
-                                         # sigmas; None = quadratic. Motivated by the
-                                         # heavy-tailed z/mu residuals (bulk ~4%, std 6x
-                                         # the robust spread) measured on tt_amb3r. 2.0
-                                         # matches mp-sfm's rob_std. (huber_* names
-                                         # predate depth_loss and cover both kernels —
-                                         # renaming would orphan every sweep dir name.)
-    huber_adaptive: bool = True          # scale the transition by the MAD-fitted
-                                         # dispersion of the current whitened residuals,
-                                         # refit at each global BA and reused by the local
-                                         # ones. Unfloored (as in mp-sfm): a sensor whose
-                                         # residuals beat its nominal sigmas tightens the
-                                         # loss. Also decouples the sweep axes — the
-                                         # transition in RAW units is invariant to
-                                         # sigma_scale, which then acts as a pure weight.
-    shared_scale: bool = False           # ONE alpha for the whole map, frozen at the
-                                         # first median snapshot —
-                                         # for scale-consistent sensors, where
-                                         # per-image snapshots would inject scale
-                                         # noise the sensor doesn't have
+    huber_scale: float | None = 2.0      
+    huber_adaptive: bool = True         
+    shared_scale: bool = False           
     per_image_scale: bool = True         # alpha block variable (else constant at 1.0)
     prior_sigma_alpha: float | None = None   # None = no prior (weak default per design)
     alpha_init: Literal["median", "unit"] = "median"
