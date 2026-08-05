@@ -97,10 +97,17 @@ def main() -> None:
     args.out.mkdir(parents=True, exist_ok=True)
 
     print(f"{'scene':<12}{'view':<12}{'flagrancy':>10}{'peak':>7}  (patch {args.patch})")
+    def arm_dir(ba: Path, name: str) -> Path | None:
+        # baseline carries no sigma cell, so fall back to the bare name
+        for candidate in (f"{name}_{args.cell}" if args.cell else name, name):
+            if (ba / candidate / args.repeat / "per_view.json").exists():
+                return ba / candidate / args.repeat
+        return None
+
     for seq in sequences:
         ba = args.root / seq / "dslr" / "ba"
-        a_dir, b_dir = ba / a_name / args.repeat, ba / b_name / args.repeat
-        if not (a_dir / "per_view.json").exists() or not (b_dir / "per_view.json").exists():
+        a_dir, b_dir = arm_dir(ba, lhs), arm_dir(ba, rhs)
+        if a_dir is None or b_dir is None:
             continue
         views = sorted(set(held_out(a_dir)) & set(held_out(b_dir)))
 
