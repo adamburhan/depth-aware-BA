@@ -23,6 +23,8 @@ from summarize_nvs import ITER, cell, held_out
 
 # sign that turns the metric into higher-is-better
 BETTER = {"PSNR": 1.0, "SSIM": 1.0, "LPIPS": -1.0}
+# a gate in PSNR dB is not a gate in LPIPS: each metric needs its own scale
+MIN_DELTA = {"PSNR": 0.5, "SSIM": 0.005, "LPIPS": 0.02}
 
 _splits: dict[Path, list[str]] = {}
 
@@ -66,13 +68,16 @@ def main() -> None:
     ap.add_argument("--sequences", nargs="+", default=None)
     ap.add_argument("--reference", default="baseline")
     ap.add_argument("--contrast", default="amb3r_gmm_all,amb3r_unimodal_all")
-    ap.add_argument("--min_delta", type=float, default=0.5)
+    ap.add_argument("--min_delta", type=float, default=None,
+                    help=f"default is per-metric: {MIN_DELTA}")
     ap.add_argument("--min_z", type=float, default=3.0)
-    ap.add_argument("--top", type=int, default=20)
+    ap.add_argument("--cells", default="", help="substring filter on the sigma cell")
+    ap.add_argument("--top", type=int, default=10, help="per contrast")
     ap.add_argument("--paths", action="store_true", help="print render paths to eyeball")
     args = ap.parse_args()
 
     flip = BETTER[args.metric]
+    min_delta = args.min_delta if args.min_delta is not None else MIN_DELTA[args.metric]
     lhs, _, rhs = args.contrast.partition(",")
     sequences = args.sequences or sorted(
         p.name for p in args.root.iterdir() if (p / "dslr" / "ba").is_dir()
@@ -85,7 +90,8 @@ def main() -> None:
         if not ba.is_dir():
             continue
         present = {p.name for p in ba.iterdir() if p.is_dir()}
-        for suffix in sorted(v[len(lhs):] for v in present if v.startswith(lhs)):
+        for suffix in sorted(v[len(lhs):] for v in present
+                             if v.startswith(lhs) and args.cells in v):
             names = {"gmm": lhs + suffix, "uni": rhs + suffix, "base": args.reference}
             if not all(n in present for n in names.values()):
                 continue
@@ -110,14 +116,14 @@ def main() -> None:
                 for v in views:
                     delta = flip * (stats[a][v][0] - stats[b][v][0])
                     z = delta / denom
-                    if abs(delta) < args.min_delta or abs(z) < args.min_z:
+                    if abs(delta) < min_delta or abs(z) < args.min_z:
                         continue
                     pos, neg = pos + (delta > 0), neg + (delta < 0)
                     rows.append((abs(z), seq, suffix.lstrip("_"), v, label, delta, z,
                                  stats[a][v], stats[b][v], arms[a], arms[b]))
                 census.append((seq, suffix.lstrip("_"), label, len(views), pos, neg))
 
-    print(f"census: |delta| > {args.min_delta} and |z| > {args.min_z}  "
+    print(f"census: |delta| > {min_delta} and |z| > {args.min_z}  "
           f"({args.metric}, sign flipped so + = first arm better)")
     print(f"{'scene':<12}{'cell':<20}{'contrast':<12}{'views':>6}{'+':>5}{'-':>5}")
     for scene, suffix, label, n, pos, neg in census:
@@ -133,16 +139,23 @@ def main() -> None:
     for label in ("gmm-uni", "gmm-base", "uni-base"):
         print(f"  {label:<12}{totals[(label, '+')]:>4} + / {totals[(label, '-')]:>4} -")
 
-    rows.sort(reverse=True)
-    print(f"\ntop {args.top} views by |z|")
-    print(f"{'scene':<12}{'cell':<18}{'view':<12}{'contrast':<11}"
-          f"{'delta':>8}{'z':>7}{'a':>8}{'b':>8}{'a_sd':>6}{'b_sd':>6}")
-    for _, seq, suffix, view, label, delta, z, a, b, reps_a, reps_b in rows[:args.top]:
-        print(f"{seq:<12}{suffix:<18}{view:<12}{label:<11}"
-              f"{delta:>8.2f}{z:>7.1f}{a[0]:>8.2f}{b[0]:>8.2f}{a[1]:>6.2f}{b[1]:>6.2f}")
-        if args.paths:
-            print(f"    a: {render_paths(reps_a, view)}")
-            print(f"    b: {render_paths(reps_b, view)}")
+    # Rank by |delta|, within contrast: a global |z| sort buries the mixture
+    # cells under the tight-sigma catastrophe, and the pooled-sd z is only a
+    # screening statistic (3 repeats) -- quote the dB, never the z.
+    rows.sort(key=lambda r: -abs(r[5]))
+    for label in ("gmm-uni", "gmm-base", "uni-base"):
+        selected = [r for r in rows if r[4] == label][:args.top]
+        if not selected:
+            continue
+        print(f"\ntop {len(selected)} {label} views by |delta| ({args.metric})")
+        print(f"{'scene':<12}{'cell':<18}{'view':<12}"
+              f"{'delta':>8}{'z':>7}{'a':>8}{'b':>8}{'a_sd':>6}{'b_sd':>6}")
+        for _, seq, suffix, view, _, delta, z, a, b, reps_a, reps_b in selected:
+            print(f"{seq:<12}{suffix:<18}{view:<12}"
+                  f"{delta:>8.3f}{z:>7.1f}{a[0]:>8.3f}{b[0]:>8.3f}{a[1]:>6.3f}{b[1]:>6.3f}")
+            if args.paths:
+                print(f"    a: {render_paths(reps_a, view)}")
+                print(f"    b: {render_paths(reps_b, view)}")
 
 
 if __name__ == "__main__":
