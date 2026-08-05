@@ -194,9 +194,11 @@ dev = [
     { name = "pytest", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
 ]
 viz = [
+    { name = "embreex", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "jinja2", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "matplotlib", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "scipy", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "trimesh", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
 ]
 
 [package.metadata]
@@ -219,9 +221,24 @@ dev = [
     { name = "pytest", specifier = ">=9.1.1" },
 ]
 viz = [
+    { name = "embreex", specifier = ">=4.4.0" },
     { name = "jinja2", specifier = ">=3.1.6" },
     { name = "matplotlib", specifier = ">=3.9" },
     { name = "scipy", specifier = ">=1.18.0" },
+    { name = "trimesh", specifier = ">=4.12.2" },
+]
+
+[[package]]
+name = "embreex"
+version = "4.4.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+]
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/9b/58/56b0ef72a128da86892f89f61f0c91bf60c6ea20c2ab952cb88e05c4e89b/embreex-4.4.0-cp313-cp313-macosx_13_0_arm64.whl", hash = "sha256:096cffa6be78966b0214b26f09fc22cb5ebcfbd4fe9fdc27caf6400869058a51", size = 5094712, upload-time = "2026-04-22T19:47:02.112Z" },
+    { url = "https://files.pythonhosted.org/packages/36/d2/9bbde8d9d520c2a7bcad892631165b9676d9dcbde381f25bfda06d0f6e42/embreex-4.4.0-cp313-cp313-macosx_13_0_x86_64.whl", hash = "sha256:078bae4dcebb2a64c8dde6b3c178f258f966c4514e265608620033a6c907e21b", size = 13212105, upload-time = "2026-04-22T19:47:04.511Z" },
+    { url = "https://files.pythonhosted.org/packages/03/5d/3e5ca5dea1c2c5b4604f3bedb67ea4beaa465398d9c04d8124ca3d657b05/embreex-4.4.0-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:cd305875e2cd7c51004a423fe7da9881fa266fa4a50e61dd546978e10f020e66", size = 14486730, upload-time = "2026-04-22T19:47:07.229Z" },
 ]
 
 [[package]]
