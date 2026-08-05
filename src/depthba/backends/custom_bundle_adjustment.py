@@ -291,7 +291,15 @@ def _add_depth_factors(problem, blocks, ba_config, reconstruction, depth_ctx):
             continue  # zero-observation image: no blocks in this problem
         pose_const = frame_id in blocks["const_poses"]
         if not depth_ctx.has_affine(image_id) and cfg.alpha_init == "median":
-            depth_ctx.affine(image_id, median_depth_ratio(image, reconstruction, rows))
+            alpha0 = median_depth_ratio(image, reconstruction, rows)
+            depth_ctx.affine(image_id, alpha0)
+            # Under shared_scale this fires once, very early, and is then frozen
+            # for the whole reconstruction -- record what it froze at and how
+            # much map existed at the time, so it need not be reproduced later.
+            logging.info(
+                f"=> Depth alpha frozen at {alpha0:.6f} for image {image_id} "
+                f"({reconstruction.num_reg_images()} images registered)"
+            )
         alpha, beta = depth_ctx.affine(image_id)
 
         num_before = num_added
