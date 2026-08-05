@@ -1,18 +1,20 @@
-"""How often does the max-mixture actually pick mode 1, among keypoints where a second mode exists?
+"""How often does the max-mixture pick mode 1, and on which population?
 
-FINAL-STATE ONLY: mode flips during incremental mapping are invisible here.
+FINAL-STATE ONLY: mode flips during incremental mapping are invisible here. The
+selection rule is invariant to a uniform sigma scaling (equal sigmas/weights make
+it argmin|r|), so engagement differences across sigma_scale cells reflect where
+points converged, not a change in the rule.
 
 Alpha under shared_scale is frozen very early in mapping and never recomputed, so
 runs predating alpha logging cannot have it reproduced exactly -- pass --alpha from
-the BA log if you have it. Otherwise it is re-estimated from the final
-reconstruction and reported across a jitter range, since the winner of a
-near-midpoint keypoint depends on it.
+the BA log if you have it.
 
-  python scripts/winner_stats.py --db .../database.db \
-      --model .../ba/<variant>/0 --sensor amb3r_gmm
+  python scripts/winner_stats.py --db database.db --sensor amb3r_gmm \
+      --models ba/*/0 [--detail]
 """
 
 import argparse
+import collections
 import sqlite3
 from pathlib import Path
 
@@ -24,9 +26,21 @@ from depthba.backends.residuals import maxmix_scores, whitened_residuals
 from depthba.depth import schema
 
 
+def read_rows(db: Path, sensor: str):
+    conn = sqlite3.connect(db)
+    meta = schema.read_meta(conn, sensor)
+    if meta.num_modes < 2:
+        raise SystemExit(f"{sensor} is unimodal (K={meta.num_modes})")
+    ids = [i for (i,) in conn.execute(
+        "SELECT DISTINCT image_id FROM depthba_keypoint_depths WHERE sensor=?", (sensor,))]
+    rows = {i: schema.read_depths_for_image(conn, i, sensor, meta.num_modes) for i in ids}
+    conn.close()
+    return rows
+
+
 def collect(rec, rows_by_image):
-    """Triangulated non-sky keypoints: (z_cam, modes, sigmas, weights)."""
-    z, modes, sigmas, weights = [], [], [], []
+    """Per triangulated non-sky observation: depth, modes, sigmas, weights, track id."""
+    z, modes, sigmas, weights, track = [], [], [], [], []
     for image in rec.images.values():
         rows = rows_by_image.get(image.image_id)
         if not rows:
@@ -43,71 +57,71 @@ def collect(rec, rows_by_image):
                 continue
             z.append(depth)
             modes.append(row.modes)
-            sigmas.append(row.sigmas if row.sigmas is not None else np.full(len(row.modes), np.nan))
+            sigmas.append(row.sigmas)
             weights.append(row.weights)
-    return (np.array(z), np.array(modes), np.array(sigmas), np.array(weights))
+            track.append(p2d.point3D_id)
+    return (np.array(z), np.array(modes), np.array(sigmas, dtype=float),
+            np.array(weights, dtype=float), np.array(track))
 
 
-def winner_fraction(z, modes, sigmas, weights, alpha):
-    """Fraction of the given factors whose max-mixture winner is not mode 0."""
-    wins = 0
-    for i in range(len(z)):
-        r = whitened_residuals(z[i], modes[i], sigmas[i], alpha)
-        k = int(np.argmin(maxmix_scores(r, sigmas[i], np.maximum(weights[i], 1e-20))))
-        wins += k != 0
-    return wins / max(len(z), 1)
+def winners(z, modes, sigmas, weights, alpha):
+    r = whitened_residuals(z[:, None], modes, sigmas, alpha)
+    return np.argmin(maxmix_scores(r, sigmas, np.maximum(weights, 1e-20)), axis=1)
+
+
+def rates(win, label, edges_of):
+    """Win rate within quartile bins of some quantity, over the live subset."""
+    q = np.percentile(edges_of, [25, 50, 75])
+    bins = np.digitize(edges_of, q)
+    return label + " " + " ".join(
+        f"q{b + 1}:{win[bins == b].mean():.0%}" if (bins == b).any() else f"q{b + 1}:-"
+        for b in range(4)
+    )
 
 
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--db", type=Path, required=True)
-    ap.add_argument("--model", type=Path, required=True)
+    ap.add_argument("--models", type=Path, nargs="+", required=True)
     ap.add_argument("--sensor", default="amb3r_gmm")
     ap.add_argument("--sep_min", type=float, default=0.1)
-    ap.add_argument("--alpha", type=float, default=None,
-                    help="the frozen alpha from the BA log; re-estimated if omitted")
-    ap.add_argument("--alpha_jitter", type=float, default=0.05,
-                    help="report sensitivity over alpha*(1 +/- this)")
+    ap.add_argument("--alpha", type=float, default=None)
+    ap.add_argument("--detail", action="store_true",
+                    help="per-model breakdowns by depth, separation and track")
     args = ap.parse_args()
+    pycolmap.logging.minloglevel = 2
 
-    conn = sqlite3.connect(args.db)
-    meta = schema.read_meta(conn, args.sensor)
-    if meta.num_modes < 2:
-        raise SystemExit(f"{args.sensor} is unimodal (K={meta.num_modes})")
-    image_ids = [i for (i,) in conn.execute(
-        "SELECT DISTINCT image_id FROM depthba_keypoint_depths WHERE sensor=?",
-        (args.sensor,))]
-    rows_by_image = {
-        i: schema.read_depths_for_image(conn, i, args.sensor, meta.num_modes)
-        for i in image_ids
-    }
-    conn.close()
+    rows_by_image = read_rows(args.db, args.sensor)
+    print(f"{'model':<52}{'factors':>8}{'live':>7}{'win':>7}{'farther':>8}")
+    for model in args.models:
+        rec = pycolmap.Reconstruction(model)
+        z, modes, sigmas, weights, track = collect(rec, rows_by_image)
+        if not len(z):
+            continue
+        alpha = args.alpha if args.alpha is not None else float(np.median(z / modes[:, 0]))
+        sep = np.abs(np.log(modes[:, 1]) - np.log(modes[:, 0]))
+        live = sep >= args.sep_min
+        k = winners(z[live], modes[live], sigmas[live], weights[live], alpha)
+        win = k != 0
+        # is the winning second mode BEHIND the anchor? a systematic depth bias
+        # would push wins to one side; genuine surface confusion should not.
+        farther = (modes[live][win][:, 1] > modes[live][win][:, 0]).mean() if win.any() else np.nan
+        name = str(model).split("/ba/")[-1]
+        print(f"{name:<52}{len(z):>8}{live.mean():>7.1%}{win.mean():>7.1%}{farther:>8.0%}")
 
-    rec = pycolmap.Reconstruction(args.model)
-    z, modes, sigmas, weights = collect(rec, rows_by_image)
-    if not len(z):
-        raise SystemExit("no triangulated non-sky rows in this reconstruction")
-
-    alpha = args.alpha
-    if alpha is None:
-        alpha = float(np.median(z / modes[:, 0]))
-        print(f"alpha re-estimated from the final reconstruction: {alpha:.6f} "
-              "(NOT the frozen value BA used -- see --alpha)")
-    else:
-        print(f"alpha from BA log: {alpha:.6f}")
-
-    sep = np.abs(np.log(modes[:, 1]) - np.log(modes[:, 0]))
-    live = sep >= args.sep_min
-    print(f"{len(z)} triangulated non-sky factors, {live.sum()} live "
-          f"(separation >= {args.sep_min}) = {live.mean():.1%}")
-
-    for scale in (1 - args.alpha_jitter, 1.0, 1 + args.alpha_jitter):
-        a = alpha * scale
-        frac_live = winner_fraction(
-            z[live], modes[live], sigmas[live], weights[live], a)
-        print(f"  alpha x{scale:.2f}: mode 1 wins {frac_live:.2%} of live factors "
-              f"({int(frac_live * live.sum())} keypoints), "
-              f"{frac_live * live.mean():.3%} of all")
+        if args.detail:
+            print(f"    alpha {alpha:.4f}"
+                  + ("" if args.alpha is not None else " (re-estimated, not BA's frozen value)"))
+            print("    " + rates(win, "by depth   ", z[live]))
+            print("    " + rates(win, "by sep     ", sep[live]))
+            tracks = collections.defaultdict(list)
+            for t, w in zip(track[live], win):
+                tracks[t].append(w)
+            multi = [v for v in tracks.values() if len(v) > 1]
+            if multi:
+                agree = np.mean([all(v) or not any(v) for v in multi])
+                print(f"    tracks with >1 live observation: {len(multi)}, "
+                      f"{agree:.0%} unanimous on the winner")
 
 
 if __name__ == "__main__":
