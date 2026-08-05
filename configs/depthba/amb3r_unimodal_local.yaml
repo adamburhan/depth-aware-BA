@@ -5,7 +5,7 @@ depth_in_local: true
 sigma: 0.05
 sigma_scale: 1.0
 huber_scale: 2.0
-huber_adaptive: false
+huber_adaptive: true
 shared_scale: true
 per_image_scale: false
 prior_sigma_alpha: null

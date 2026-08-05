@@ -43,11 +43,11 @@ class DepthContext:
         self.rows = rows if rows is not None else {}  # image_id -> {point2D_idx: KeypointDepth}
         self.alphas: dict[int, np.ndarray] = {}
         self.betas: dict[int, np.ndarray] = {}
-        # Huber multiplier from the last global-BA MAD fit. Persisting it here
-        # is what lets local BAs inherit the global estimate instead of
-        # refitting on their own (young, badly-triangulated) points.
+        # Robust-loss multiplier from the last global-BA MAD fit. Persisting it
+        # here is what lets local BAs inherit the global estimate instead of
+        # refitting on their own (young, badly-triangulated) points. 1.0 until
+        # the first fit = the nominal huber_scale.
         self.robust_scale = 1.0
-        self.robust_scale_raw = 1.0  # pre-floor fit, diagnostic only
 
     @classmethod
     def load(cls, config: DepthBAConfig, database_path: Path) -> "DepthContext":
@@ -166,7 +166,7 @@ class DepthContext:
     def update_robust_scale(
         self, reconstruction, image_ids, max_samples: int = 20_000, min_samples: int = 50
     ) -> float:
-        """Refit the Huber multiplier from the current residual dispersion.
+        """Refit the robust multiplier from the current residual dispersion.
 
         Called at global BA only; the result is frozen for that solve and
         inherited by every local BA until the next global one. Too few
@@ -176,11 +176,9 @@ class DepthContext:
         if len(r) < min_samples:
             return self.robust_scale
         sigma = 1.4826 * float(np.median(np.abs(r - np.median(r))))
-        self.robust_scale_raw = sigma
-        # Floor at 1: the fitted dispersion may only LOOSEN the loss relative
-        # to huber_scale. Tightening below nominal would let a well-behaved
-        # bundle start rejecting its own good depth factors.
-        self.robust_scale = max(sigma, 1.0)
+        if sigma <= 0:
+            return self.robust_scale
+        self.robust_scale = sigma
         return self.robust_scale
 
     def make_cost(self, row):

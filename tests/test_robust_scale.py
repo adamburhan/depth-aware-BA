@@ -84,13 +84,12 @@ def test_recovers_known_dispersion():
     assert ctx.update_robust_scale(rec, [1]) == pytest.approx(3.0, rel=0.1)
 
 
-def test_floors_at_one_when_residuals_are_tight():
-    """Better-than-modeled residuals must NOT tighten the loss below
-    huber_scale — the floor is what keeps a clean bundle from rejecting its
-    own good depth factors."""
+def test_tight_residuals_tighten_the_loss():
+    """The fit is unfloored: a sensor beating its nominal sigmas pulls the
+    transition BELOW huber_scale, as in mp-sfm."""
     rng = np.random.default_rng(1)
     ctx, rec = build(rng.normal(0.0, 0.3, 4000))
-    assert ctx.update_robust_scale(rec, [1]) == 1.0
+    assert ctx.update_robust_scale(rec, [1]) == pytest.approx(0.3, rel=0.1)
 
 
 def test_second_mode_does_not_inflate_the_scale():
@@ -102,6 +101,7 @@ def test_second_mode_does_not_inflate_the_scale():
     assert np.abs(r).max() < 1e-9                      # winner is the fitting mode
     naive = (np.log(MU) - np.log(MU * 0.63)) / SIGMA   # what mode 0 would have given
     assert naive > 4.0
+    # zero dispersion is a degenerate fit, so the previous estimate stands
     assert ctx.update_robust_scale(rec, [1]) == 1.0
 
 

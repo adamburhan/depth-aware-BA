@@ -279,7 +279,12 @@ def _add_depth_factors(problem, blocks, ba_config, reconstruction, depth_ctx):
         # robust_scale is refit at global BA and carried into the local ones;
         # constructing the loss here freezes it for the whole solve.
         huber_scale *= depth_ctx.robust_scale
-    depth_loss = pyceres.HuberLoss(huber_scale) if huber_scale is not None else None
+    if huber_scale is None:
+        depth_loss = None
+    elif cfg.depth_loss == "cauchy":
+        depth_loss = pyceres.CauchyLoss(huber_scale)
+    else:
+        depth_loss = pyceres.HuberLoss(huber_scale)
     num_added = 0
     for image_id in sorted(ba_config.images):
         rows = depth_ctx.rows.get(image_id)
@@ -394,18 +399,16 @@ def build_problem(
 
     # Phase 5: depth factors (ours).
     if depth_ctx is not None and depth_ctx.active(in_global):
-        if in_global and depth_ctx.config.huber_adaptive:
+        if (in_global and depth_ctx.config.huber_adaptive
+                and depth_ctx.config.huber_scale is not None):
             # Global bundles only: the local ones see mostly young, poorly
             # triangulated points, so their dispersion is not the sensor's.
             scale = depth_ctx.update_robust_scale(reconstruction, ba_config.images)
             # info, not verbose: this fires once per global BA (rare) and is the
-            # only record of what the loss threshold actually became. The raw
-            # fit is the calibration diagnostic — <1 means the sensor's sigmas
-            # are conservative, and the floor is discarding that information.
-            logging.info(
-                f"=> Depth robust scale (MAD) = {scale:.3f} "
-                f"(raw {depth_ctx.robust_scale_raw:.3f})"
-            )
+            # only record of what the loss threshold actually became. It doubles
+            # as the sigma calibration readout — <1 means the sensor's sigmas
+            # are conservative, >1 that they are optimistic.
+            logging.info(f"=> Depth robust scale (MAD) = {scale:.3f}")
         num_depth = _add_depth_factors(
             problem, blocks, ba_config, reconstruction, depth_ctx
         )

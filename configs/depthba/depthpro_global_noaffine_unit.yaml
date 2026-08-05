@@ -12,6 +12,8 @@ depth_space: log
 depth_in_global: true
 depth_in_local: false
 sigma: 0.15
+huber_scale: null         # quadratic — these arms' recorded numbers predate the
+                          # huber defaults; pinned so they stay reproducible
 per_image_scale: false
 prior_sigma_alpha: null
 alpha_init: unit

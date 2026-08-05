@@ -168,15 +168,29 @@ class DepthBAConfig:
                                          # source (stored per-mode sigmas OR the constant
                                          # above), so one sweep axis means the same thing
                                          # on sigma-carrying and sigma-less sensors
-    huber_scale: float | None = None     # Huber transition on depth factors, in whitened
+    depth_loss: Literal["huber", "cauchy"] = "huber"
+                                         # robust kernel on the depth factors. huber is
+                                         # convex but its influence saturates at a
+                                         # constant, so a coherent block of wrong depths
+                                         # keeps pulling; cauchy redescends to zero
+                                         # influence, which is what mp-sfm uses on this
+                                         # term (their reprojection term stays convex,
+                                         # and so does ours).
+    huber_scale: float | None = 2.0      # transition on depth factors, in whitened
                                          # sigmas; None = quadratic. Motivated by the
                                          # heavy-tailed z/mu residuals (bulk ~4%, std 6x
-                                         # the robust spread) measured on tt_amb3r.
-    huber_adaptive: bool = False         # scale the transition by the MAD-fitted
+                                         # the robust spread) measured on tt_amb3r. 2.0
+                                         # matches mp-sfm's rob_std. (huber_* names
+                                         # predate depth_loss and cover both kernels —
+                                         # renaming would orphan every sweep dir name.)
+    huber_adaptive: bool = True          # scale the transition by the MAD-fitted
                                          # dispersion of the current whitened residuals,
                                          # refit at each global BA and reused by the local
-                                         # ones. Floored at 1.0, so it can only loosen
-                                         # relative to huber_scale, never tighten.
+                                         # ones. Unfloored (as in mp-sfm): a sensor whose
+                                         # residuals beat its nominal sigmas tightens the
+                                         # loss. Also decouples the sweep axes — the
+                                         # transition in RAW units is invariant to
+                                         # sigma_scale, which then acts as a pure weight.
     shared_scale: bool = False           # ONE alpha for the whole map, frozen at the
                                          # first median snapshot —
                                          # for scale-consistent sensors, where
@@ -193,15 +207,18 @@ class DepthBAConfig:
             raise ValueError(f"depth_space must be log/linear/inverse, got {self.depth_space!r}")
         if self.alpha_init not in ("median", "unit"):
             raise ValueError(f"alpha_init must be median/unit, got {self.alpha_init!r}")
+        if self.depth_loss not in ("huber", "cauchy"):
+            raise ValueError(f"depth_loss must be huber/cauchy, got {self.depth_loss!r}")
         if self.sigma <= 0:
             raise ValueError(f"sigma must be > 0, got {self.sigma}")
         if self.sigma_scale <= 0:
             raise ValueError(f"sigma_scale must be > 0, got {self.sigma_scale}")
         if self.huber_scale is not None and self.huber_scale <= 0:
             raise ValueError(f"huber_scale must be > 0 or null, got {self.huber_scale}")
-        if self.huber_adaptive and self.huber_scale is None:
-            raise ValueError("huber_adaptive needs a huber_scale to scale (got null)")
-        if self.huber_adaptive and self.depth_space != "log":
+        # huber_adaptive is vacuous without a scale to multiply (both the fit
+        # and the loss are skipped), and it is now on by default — so
+        # huber_scale: null alone must keep meaning "plain quadratic".
+        if self.huber_adaptive and self.huber_scale is not None and self.depth_space != "log":
             raise ValueError(
                 "huber_adaptive is log-space only: the linear/inverse residual "
                 "formulas have no parity coverage against the fork's factors"
