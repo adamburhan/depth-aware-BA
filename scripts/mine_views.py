@@ -88,6 +88,9 @@ def main() -> None:
     ap.add_argument("--min_peak", type=float, default=4.0,
                     help="ignore views whose worst patch is this quiet (0-255)")
     ap.add_argument("--top", type=int, default=8, help="views per scene")
+    ap.add_argument("--sort", default="peak", choices=["peak", "flagrancy"],
+                    help="real renders disagree everywhere, so flagrancy "
+                         "compresses to ~4-10 and peak discriminates better")
     args = ap.parse_args()
 
     lhs, _, rhs = args.contrast.partition(",")
@@ -122,7 +125,8 @@ def main() -> None:
             print(f"{seq:<12}nothing above --min_peak")
             continue
 
-        scored.sort(reverse=True)
+        # (flagrancy, peak, ...) -> sort on whichever the user trusts
+        scored.sort(key=lambda s: -s[0 if args.sort == 'flagrancy' else 1])
         rows = []
         for ratio, peak_err, peak, view, pa, pb in scored[:args.top]:
             print(f"{seq:<12}{view:<12}{ratio:>10.1f}{peak_err:>7.1f}")
