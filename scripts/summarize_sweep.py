@@ -105,7 +105,11 @@ def main() -> None:
         base_dirs = sorted(p for p in ba.iterdir()
                            if p.is_dir() and p.name.startswith("baseline"))
         baseline, _ = best_submodel(base_dirs[0]) if base_dirs else (None, [])
-        base_err = errors(baseline, gt, args.max_proj_center_error) \
+        # errors() aligns its FIRST argument in place, and the alignment's inlier
+        # threshold is absolute -- so a reconstruction that has already been
+        # aligned once lands somewhere else the second time (86mm on facade).
+        # Every comparison therefore gets its own load.
+        base_err = errors(best_submodel(base_dirs[0])[0], gt, args.max_proj_center_error) \
             if (baseline is not None and gt is not None) else None
         base_auc = auc(base_err, n_gt, args.auc_max) if base_err else None
 
@@ -118,12 +122,13 @@ def main() -> None:
             if len(sizes) > 1:
                 cell["frag"].append(f"    {variant:<50}{seq:<14}{sizes}")
             if baseline is not None:
-                d = errors(rec, baseline, args.max_proj_center_error)
+                d = errors(best_submodel(ba / variant)[0], baseline,
+                           args.max_proj_center_error)
                 if d is not None:
                     cell["dbase"].append(np.median([v[0] for v in d.values()]))
             if gt is None:
                 continue
-            err = errors(rec, gt, args.max_proj_center_error)
+            err = errors(rec, gt, args.max_proj_center_error)  # rec still pristine
             if err is None:
                 cell["fail"] += 1
                 continue

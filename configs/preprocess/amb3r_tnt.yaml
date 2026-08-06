@@ -1,0 +1,5 @@
+# amb3r inference + npz unpack, ETH3D layout: undistorted DSLR jpgs live under
+# <seq>/images/, and their calibration under <seq>/dslr_calibration_undistorted/.
+amb3r_repo: ${oc.env:HOME}/repos/amb3r
+image_subdir: "{sequence}/images/dslr_images_undistorted"   # under raw_root
+out_subdir: "{sequence}/dslr"                               # under data_root
