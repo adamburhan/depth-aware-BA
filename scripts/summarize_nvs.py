@@ -10,12 +10,19 @@ sides of that comparison held out. Intersections are taken per COMPARISON
 PAIR, not per scene: one arm registering the other half of a split scene
 must not shrink the contrast between two arms that agree.
 
-  python scripts/summarize_nvs.py --root $SCRATCH/.../scannetpp_amb3r
+--csv writes one long-format row per (scene, variant, reference) for the
+notebook; `delta` is in metric units and `improvement` is sign-normalised so
+that positive always means better, LPIPS included.
+
+  python scripts/summarize_nvs.py --root $SCRATCH/.../scannetpp_amb3r \\
+      --csv nvs_psnr.csv
 """
 
 import argparse
 import collections
+import csv
 import json
+import re
 from pathlib import Path
 
 import numpy as np
@@ -24,6 +31,12 @@ import pycolmap
 
 LLFFHOLD = 8
 ITER = "ours_30000"
+# sign that turns the metric into higher-is-better
+BETTER = {"PSNR": 1.0, "SSIM": 1.0, "LPIPS": -1.0}
+CELL = re.compile(r"^(.*)_sigma_scale([0-9.]+)$")
+
+FIELDS = ["scene", "variant", "sensor", "sigma_scale", "metric", "reference",
+          "n_reps", "n_views", "value", "ref_value", "delta", "improvement"]
 
 
 def held_out(gs_dir: Path) -> list[str]:
@@ -70,28 +83,39 @@ def score(repeats: list[dict[str, float]], views: list[str]) -> tuple[float, flo
     return float(np.mean(per_repeat)), sd
 
 
-def contrast(cells, a: str, b: str, min_views: int):
-    """Delta between two arms on the views BOTH held out. None if either arm
-    is missing or the overlap is too thin to mean anything."""
+def record(cells, scene, a, b, metric, min_views):
+    """One paired comparison on the views BOTH arms held out. None if either
+    arm is missing or the overlap is too thin to mean anything."""
     if a not in cells or b not in cells:
         return None
     views = sorted(views_of(cells[a]) & views_of(cells[b]))
     if len(views) < min_views:
         return None
-    return score(cells[a], views)[0] - score(cells[b], views)[0], len(views)
+    value = score(cells[a], views)[0]
+    ref_value = score(cells[b], views)[0]
+    sensor, sigma = (CELL.match(a).groups() if CELL.match(a) else (a, ""))
+    return dict(scene=scene, variant=a, sensor=sensor, sigma_scale=sigma,
+                metric=metric, reference=b, n_reps=len(cells[a]),
+                n_views=len(views), value=round(value, 4),
+                ref_value=round(ref_value, 4), delta=round(value - ref_value, 4),
+                improvement=round(BETTER[metric] * (value - ref_value), 4))
 
 
-def pooled(title: str, deltas: dict[str, list], thin: list[str]) -> None:
-    if not deltas:
+def pooled(title: str, records: list[dict], thin: list[str]) -> None:
+    if not records:
         return
-    print(f"\n{title}")
+    by_variant = collections.defaultdict(list)
+    for r in records:
+        by_variant[r["variant"]].append(r)
+    print(f"\n{title} — improvement is sign-normalised, + is always better")
     print(f"{'variant':<36}{'n':>3}{'views':>7}{'mean':>9}{'sd':>8}{'worst':>9}{'sign':>7}")
-    for variant in sorted(deltas):
-        values = np.array([d for d, _ in deltas[variant]])
-        nviews = np.array([n for _, n in deltas[variant]])
+    for variant in sorted(by_variant):
+        rows = by_variant[variant]
+        values = np.array([r["improvement"] for r in rows])
         sd = values.std(ddof=1) if len(values) > 1 else 0.0
-        print(f"{variant:<36}{len(values):>3}{int(nviews.min()):>7}{values.mean():>9.3f}"
-              f"{sd:>8.3f}{values.min():>9.3f}{int((values > 0).sum()):>4}/{len(values)}")
+        print(f"{variant:<36}{len(values):>3}{min(r['n_views'] for r in rows):>7}"
+              f"{values.mean():>9.3f}{sd:>8.3f}{values.min():>9.3f}"
+              f"{int((values > 0).sum()):>4}/{len(values)}")
     if thin:
         print(f"  excluded for < min_views: {', '.join(sorted(set(thin)))}")
 
@@ -106,6 +130,7 @@ def main() -> None:
                     help="prefix pair for the arm-vs-arm block, '' to skip")
     ap.add_argument("--min_views", type=int, default=10,
                     help="drop a scene from a comparison below this overlap")
+    ap.add_argument("--csv", type=Path, default=None, help="long-format dump")
     args = ap.parse_args()
 
     sequences = args.sequences or sorted(
@@ -113,10 +138,7 @@ def main() -> None:
     )
     lhs, _, rhs = args.contrast.partition(",")
 
-    vs_ref = collections.defaultdict(list)
-    vs_arm = collections.defaultdict(list)
-    thin_ref, thin_arm = [], []
-
+    vs_ref, vs_arm, thin_ref, thin_arm = [], [], [], []
     print(f"{'scene':<12}{'variant':<36}{'n':>3}{'views':>8}{args.metric:>9}{'sd':>7}"
           f"{'vs ' + args.reference:>10}")
     for seq in sequences:
@@ -128,18 +150,20 @@ def main() -> None:
             # its results.json reports. Comparisons below are view-matched.
             own = sorted(views_of(cells[variant]))
             mean, sd = score(cells[variant], own)
-            delta = contrast(cells, variant, args.reference, args.min_views)
+            row = None
             if variant != args.reference:
-                vs_ref[variant].append(delta) if delta else thin_ref.append(seq)
-            shown = f"{delta[0]:+10.3f}" if delta else (
+                row = record(cells, seq, variant, args.reference,
+                             args.metric, args.min_views)
+                vs_ref.append(row) if row else thin_ref.append(seq)
+            shown = f"{row['delta']:+10.3f}" if row else (
                 "" if variant == args.reference else f"{'thin':>10}")
             print(f"{seq:<12}{variant:<36}{len(cells[variant]):>3}{len(own):>8}"
                   f"{mean:>9.3f}{sd:>7.3f}{shown}")
 
             if lhs and rhs and variant.startswith(lhs):
-                other = rhs + variant[len(lhs):]
-                pair = contrast(cells, variant, other, args.min_views)
-                vs_arm[variant].append(pair) if pair else thin_arm.append(seq)
+                pair = record(cells, seq, variant, rhs + variant[len(lhs):],
+                              args.metric, args.min_views)
+                vs_arm.append(pair) if pair else thin_arm.append(seq)
         print()
 
     pooled(f"pooled paired delta vs {args.reference} ({args.metric}, per scene, "
@@ -147,6 +171,13 @@ def main() -> None:
     if lhs and rhs:
         pooled(f"pooled paired delta {lhs} - {rhs} ({args.metric}, per scene)",
                vs_arm, thin_arm)
+
+    if args.csv:
+        with args.csv.open("w", newline="") as fp:
+            writer = csv.DictWriter(fp, fieldnames=FIELDS)
+            writer.writeheader()
+            writer.writerows(vs_ref + vs_arm)
+        print(f"\nwrote {len(vs_ref) + len(vs_arm)} rows to {args.csv}")
 
 
 if __name__ == "__main__":
