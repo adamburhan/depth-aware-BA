@@ -24,6 +24,7 @@ then aggregated.
 
 import argparse
 import collections
+import csv
 from pathlib import Path
 
 import numpy as np
@@ -86,6 +87,10 @@ def main() -> None:
     ap.add_argument("--sequences", nargs="+", default=None)
     ap.add_argument("--max_proj_center_error", type=float, default=0.2)
     ap.add_argument("--auc_max", type=float, default=0.05, help="AUC threshold, m")
+    ap.add_argument("--csv", type=Path, default=None,
+                    help="per (scene, variant) rows. Alignment drifts once many "
+                         "scenes share one process, so run ONE SCENE PER PROCESS "
+                         "and pool these outside")
     args = ap.parse_args()
     pycolmap.logging.minloglevel = 2  # glog: alignment output is very noisy
 
@@ -93,6 +98,7 @@ def main() -> None:
         p.name for p in args.root.iterdir() if (p / "dslr" / "ba").is_dir()
     )
 
+    rows = []
     cells = collections.defaultdict(
         lambda: {"dbase": [], "dpos": [], "auc": [], "dauc": [], "n": 0,
                  "frag": [], "fail": 0}
@@ -140,6 +146,11 @@ def main() -> None:
                         [err[k][0] - base_err[k][0] for k in common]
                     ))
                     cell["dauc"].append(cell["auc"][-1] - base_auc)
+                    rows.append(dict(
+                        scene=seq, variant=variant, n_sub=len(sizes),
+                        dbase=cell["dbase"][-1] if cell["dbase"] else "",
+                        dpos=cell["dpos"][-1], auc=cell["auc"][-1],
+                        dauc=cell["dauc"][-1]))
 
     def stat(values, fn, scale=1.0):
         return fn(values) * scale if values else np.nan
@@ -154,6 +165,14 @@ def main() -> None:
               f"{stat(c['dpos'], np.max, 1000):>8.2f}"
               f"{stat(c['auc'], np.mean):>7.3f}"
               f"{stat(c['dauc'], np.mean):>7.3f}")
+
+    if args.csv:
+        with args.csv.open("w", newline="") as fp:
+            w = csv.DictWriter(fp, fieldnames=["scene", "variant", "n_sub",
+                                               "dbase", "dpos", "auc", "dauc"])
+            w.writeheader()
+            w.writerows(rows)
+        print(f"\nwrote {len(rows)} rows to {args.csv}")
 
     frag = [line for c in cells.values() for line in c["frag"]]
     if frag:
