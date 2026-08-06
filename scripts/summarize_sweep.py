@@ -80,6 +80,9 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--root", type=Path, required=True)
     ap.add_argument("--gt_root", type=Path, default=None)
+    ap.add_argument("--gt_subdir", default="dslr/colmap",
+                    help="under <gt_root>/<sequence>; eth3d ships its GT poses "
+                         "in dslr_calibration_undistorted")
     ap.add_argument("--sequences", nargs="+", default=None)
     ap.add_argument("--max_proj_center_error", type=float, default=0.2)
     ap.add_argument("--auc_max", type=float, default=0.05, help="AUC threshold, m")
@@ -96,7 +99,7 @@ def main() -> None:
     )
     for seq in sequences:
         ba = args.root / seq / "dslr" / "ba"
-        gt = load(args.gt_root / seq / "dslr" / "colmap") if args.gt_root else None
+        gt = load(args.gt_root / seq / args.gt_subdir) if args.gt_root else None
         n_gt = len(gt.images) if gt is not None else 0
         # baseline may carry an exp_id suffix (baseline_0)
         base_dirs = sorted(p for p in ba.iterdir()
