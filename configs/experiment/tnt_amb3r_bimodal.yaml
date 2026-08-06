@@ -1,0 +1,11 @@
+# @package _global_
+
+defaults:
+  - override /db: tnt_amb3r
+  - override /preprocess: amb3r_tnt
+  - override /depth_extract: bimodal
+
+raw_root: ${oc.env:SCRATCH}/datasets/tanks_and_temples
+data_root: ${oc.env:SCRATCH}/datasets/tanks_and_temples/amb3r
+output_dir: ${oc.env:SCRATCH}/experiments/depth-aware-ba/tnt_amb3r/${sequence}/dslr
+dump_dir: ${data_root}/${sequence}/dslr/depth_bundles

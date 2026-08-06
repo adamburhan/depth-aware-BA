@@ -1,5 +1,6 @@
-# amb3r inference + npz unpack, ETH3D layout: undistorted DSLR jpgs live under
-# <seq>/images/, and their calibration under <seq>/dslr_calibration_undistorted/.
+# amb3r inference + npz unpack, T&T layout: video frames under <seq>/images/.
+# out_subdir keeps a "dslr" level it does not really have, so every analysis
+# script's <seq>/dslr/ba path keeps working across datasets.
 amb3r_repo: ${oc.env:HOME}/repos/amb3r
-image_subdir: "{sequence}/images/dslr_images_undistorted"   # under raw_root
-out_subdir: "{sequence}/dslr"                               # under data_root
+image_subdir: "{sequence}/images"        # under raw_root
+out_subdir: "{sequence}/dslr"            # under data_root
