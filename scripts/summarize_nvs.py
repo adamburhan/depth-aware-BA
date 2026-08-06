@@ -36,7 +36,8 @@ BETTER = {"PSNR": 1.0, "SSIM": 1.0, "LPIPS": -1.0}
 CELL = re.compile(r"^(.*)_sigma_scale([0-9.]+)$")
 
 FIELDS = ["scene", "variant", "sensor", "sigma_scale", "metric", "reference",
-          "n_reps", "n_views", "value", "ref_value", "delta", "improvement"]
+          "n_reps", "n_views", "value", "sd", "ref_value", "ref_sd",
+          "delta", "improvement"]
 
 
 def held_out(gs_dir: Path) -> list[str]:
@@ -91,13 +92,14 @@ def record(cells, scene, a, b, metric, min_views):
     views = sorted(views_of(cells[a]) & views_of(cells[b]))
     if len(views) < min_views:
         return None
-    value = score(cells[a], views)[0]
-    ref_value = score(cells[b], views)[0]
+    value, sd = score(cells[a], views)
+    ref_value, ref_sd = score(cells[b], views)
     sensor, sigma = (CELL.match(a).groups() if CELL.match(a) else (a, ""))
     return dict(scene=scene, variant=a, sensor=sensor, sigma_scale=sigma,
                 metric=metric, reference=b, n_reps=len(cells[a]),
-                n_views=len(views), value=round(value, 4),
-                ref_value=round(ref_value, 4), delta=round(value - ref_value, 4),
+                n_views=len(views), value=round(value, 4), sd=round(sd, 4),
+                ref_value=round(ref_value, 4), ref_sd=round(ref_sd, 4),
+                delta=round(value - ref_value, 4),
                 improvement=round(BETTER[metric] * (value - ref_value), 4))
 
 
