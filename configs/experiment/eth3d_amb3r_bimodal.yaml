@@ -1,0 +1,11 @@
+# @package _global_
+
+defaults:
+  - override /db: eth3d_amb3r
+  - override /preprocess: amb3r_eth3d
+  - override /depth_extract: bimodal
+
+raw_root: ${oc.env:SCRATCH}/datasets/eth3d
+data_root: ${oc.env:SCRATCH}/datasets/eth3d/amb3r
+output_dir: ${oc.env:SCRATCH}/experiments/depth-aware-ba/eth3d_amb3r/${sequence}/dslr
+dump_dir: ${data_root}/${sequence}/dslr/depth_bundles

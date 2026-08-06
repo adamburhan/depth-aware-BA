@@ -11,3 +11,4 @@ data/
 # hydra run dirs
 outputs/
 multirun/
+*.csv

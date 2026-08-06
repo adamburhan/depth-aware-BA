@@ -1,9 +1,0 @@
-image_path: terrains/images/dslr_images_undistorted
-stride: 1
-camera:
-  model: PINHOLE
-  params: [3408.35, 3408.35, 3117.4, 2064.07]
-  single_camera: true
-matching:
-  method: exhaustive # exhaustive or sequential
-seed: 0

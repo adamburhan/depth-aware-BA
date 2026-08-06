@@ -1,0 +1,11 @@
+image_path: "{sequence}/dslr/images"
+stride: 1
+camera:
+  model: PINHOLE
+  params_path: "{sequence}/dslr/intrinsics.json"  
+  single_camera: true
+matching:
+  method: exhaustive     # video: consecutive-frame pairing
+  overlap: 10
+  loop_detection: false
+seed: 0
